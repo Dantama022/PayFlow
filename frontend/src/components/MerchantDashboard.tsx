@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { getMerchantSubscribers, type MerchantSubscriber } from "../stellar";
 import { formatAddress, formatXlm } from "../utils/format";
 import { usePolling } from "../hooks/usePolling";
+import CopyButton from "./CopyButton";
 
 interface Props {
   merchantKey: string;
@@ -22,8 +23,13 @@ export default function MerchantDashboard({
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    setSubscribers((prev) => {
+      if (prev.length === 0) setLoading(true);
+      return prev;
+    });
     setSubscribers((prev) => { if (prev.length === 0) setLoading(true); return prev; });
     setError(null);
+
     try {
       const data = await getMerchantSubscribers(merchantKey);
       setSubscribers(data);
@@ -75,16 +81,30 @@ export default function MerchantDashboard({
           </p>
         </div>
       ) : (
-        <div className="card">
-          <div className="subscription-rows">
+        <div className="card merchant-subscriber-card">
+          <div className="merchant-subscriber-meta mb-4">
+            <span className="text-sm text-muted">
+              {subscribers.length} active subscriber{subscribers.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="subscription-rows merchant-subscriber-list">
             {subscribers.map((entry) => (
-              <div className="subscription-row" key={entry.subscriber}>
-                <span className="subscription-row__label">
-                  {formatAddress(entry.subscriber)}
-                </span>
-                <span className="subscription-row__value">
-                  {formatXlm(entry.amount)} · {formatNextCharge(entry.nextChargeAt)}
-                </span>
+              <div className="subscription-row merchant-subscriber-row" key={entry.subscriber}>
+                <div className="merchant-row">
+                  <span className="merchant-row__address">
+                    {formatAddress(entry.subscriber)}
+                  </span>
+                  <CopyButton text={entry.subscriber} />
+                </div>
+                <div className="merchant-subscriber-value">
+                  <span className="subscription-row__value">
+                    {formatXlm(entry.amount)}
+                  </span>
+                  <span className="subscription-row__label">
+                    Next charge {formatNextCharge(entry.nextChargeAt)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
