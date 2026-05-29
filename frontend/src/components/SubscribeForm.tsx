@@ -22,6 +22,14 @@ export default function SubscribeForm({ userKey, onSign, onSuccess, announce }: 
   const { toasts, addToast, removeToast } = useToast();
   const tx = useTransaction();
 
+  function validateReferrer(value: string): string | null {
+    if (!value) return null; // Optional field
+    if (!isValidStellarAddress(value)) {
+      return "Invalid Stellar address format";
+    }
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!validate({ merchant, amount, interval })) return;

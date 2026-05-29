@@ -80,8 +80,10 @@ pub struct Subscription {
     pub interval: u64,
     pub last_charged: u64,
     pub active: bool,
-    pub paused: bool,
-    pub token: Address,
+    pub paused: bool,       // true if paused, false otherwise
+    pub token: Address,     // SAC token used for this subscription
+    pub referrer: Option<Address>, // optional referral address
+    pub label: Symbol,      // user-assigned label for this subscription
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -140,6 +142,8 @@ impl FlowPay {
             active: true,
             paused: false,
             token,
+            referrer,
+            label,
             trial_duration,
         };
 

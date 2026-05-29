@@ -89,17 +89,19 @@ export async function buildSubscribeTx(
   merchant: string,
   amount: bigint,
   intervalSec: bigint,
-  tokenAddr: string = DEFAULT_TOKEN,
-  trialDays: number = 0
+  tokenAddr: string,
+  referrer: string | null,
+  label: string
 ): Promise<string> {
-  const trialDurationSec = BigInt(trialDays * 24 * 60 * 60);
+  const referrerVal = referrer ? { tag: "Some", val: addressVal(referrer) } : { tag: "None" };
   return buildTx(user, "subscribe", [
     addressVal(user),
     addressVal(merchant),
     nativeToScVal(amount, { type: "i128" }),
     nativeToScVal(intervalSec, { type: "u64" }),
     addressVal(tokenAddr),
-    nativeToScVal(trialDurationSec, { type: "u64" }),
+    nativeToScVal(referrerVal, { type: "option" }),
+    nativeToScVal(label, { type: "symbol" }),
   ]);
 }
 
@@ -232,6 +234,19 @@ export async function getSubscription(user: string): Promise<Subscription | null
       case "active":
       case "paused":
         fields[key] = val.b();
+        break;
+      case "token":
+        fields[key] = Address.fromScVal(val).toString();
+        break;
+      case "referrer":
+        if (val.switch().name === "scvVoid") {
+          fields[key] = null;
+        } else {
+          fields[key] = Address.fromScVal(val).toString();
+        }
+        break;
+      case "label":
+        fields[key] = val.sym().toString();
         break;
     }
   }

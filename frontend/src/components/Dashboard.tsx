@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { buildCancelTx, buildPayPerUseTx } from "../stellar";
 import { friendlyError } from "../utils/errors";
+import SubscriptionCard from "./SubscriptionCard";
 import SubscriptionCardSkeleton from "./Skeleton";
 import SubscriptionCard from "./SubscriptionCard";
 import SubscriptionHistory from "./SubscriptionHistory";
