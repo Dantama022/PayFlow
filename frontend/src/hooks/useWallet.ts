@@ -3,12 +3,15 @@
  * https://www.freighter.app/
  */
 import { useState, useCallback } from "react";
+import { Transaction } from "@stellar/stellar-sdk";
+import { NETWORK_PASSPHRASE, server } from "../stellar";
 
 declare global {
   interface Window {
     freighter?: {
       isConnected: () => Promise<boolean>;
       getPublicKey: () => Promise<string>;
+      getNetwork: () => Promise<{ network: string; networkPassphrase: string }>;
       signTransaction: (xdr: string, opts: { networkPassphrase: string }) => Promise<string>;
     };
   }
@@ -17,6 +20,7 @@ declare global {
 export function useWallet() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   const connect = useCallback(async () => {
     setError(null);
@@ -24,6 +28,7 @@ export function useWallet() {
       setError("Freighter wallet not found. Install it from freighter.app");
       return;
     }
+    setConnecting(true);
     try {
       const connected = await window.freighter.isConnected();
       if (!connected) {
@@ -34,16 +39,16 @@ export function useWallet() {
       setPublicKey(key);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to connect wallet");
+    } finally {
+      setConnecting(false);
     }
   }, []);
 
   const signAndSubmit = useCallback(async (xdr: string): Promise<string> => {
     if (!window.freighter) throw new Error("Freighter not available");
-    const { NETWORK_PASSPHRASE, server } = await import("../stellar");
     const signed = await window.freighter.signTransaction(xdr, {
       networkPassphrase: NETWORK_PASSPHRASE,
     });
-    const { Transaction } = await import("@stellar/stellar-sdk");
     const tx = new Transaction(signed, NETWORK_PASSPHRASE);
     const result = await server.sendTransaction(tx);
     return result.hash;
@@ -54,5 +59,5 @@ export function useWallet() {
     setError(null);
   }, []);
 
-  return { publicKey, connect, signAndSubmit, disconnect, error };
+  return { publicKey, connect, signAndSubmit, disconnect, error, connecting };
 }

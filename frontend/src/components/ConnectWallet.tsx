@@ -1,28 +1,27 @@
 import React from "react";
+import { useFreighterAvailable } from "../hooks/useFreighterAvailable";
+import Spinner from "./Spinner";
 
 interface Props {
   onConnect: () => void;
   error: string | null;
+  loading?: boolean;
 }
 
-function useFreighterAvailable(): boolean {
-  return typeof window !== "undefined" && !!window.freighter;
-}
-
-export default function ConnectWallet({ onConnect, error }: Props) {
-  const freighterAvailable = useFreighterAvailable();
+export default function ConnectWallet({ onConnect, error, loading = false }: Props) {
+  const { available, installUrl } = useFreighterAvailable();
 
   return (
     <div className="card connect-wallet">
       <p className="connect-wallet__hint">Connect your Freighter wallet to get started.</p>
 
-      {freighterAvailable ? (
-        <button onClick={onConnect} className="btn-primary w-full">
-          Connect Wallet
+      {available ? (
+        <button onClick={onConnect} className="btn-primary w-full" disabled={loading}>
+          {loading ? <Spinner size="sm" /> : "Connect Wallet"}
         </button>
       ) : (
         <a
-          href="https://freighter.app"
+          href={installUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="btn-primary w-full connect-wallet__install-link"

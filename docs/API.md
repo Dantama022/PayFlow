@@ -18,6 +18,7 @@ pub struct Subscription {
     pub last_charged: u64,   // Ledger UNIX timestamp of the last successful charge
     pub active: bool,        // false if the subscription has been cancelled
     pub paused: bool,        // true if the subscription is temporarily paused
+    pub token: Address,      // SAC token address used for this subscription
 }
 ```
 
@@ -27,8 +28,17 @@ Internal storage keys. Not part of the public API but useful for understanding s
 
 ```rust
 pub enum DataKey {
-    Subscription(Address),  // persistent — one entry per subscriber
-    Token,                  // instance — the token contract address
+    Subscription(Address),      // persistent — one entry per subscriber
+    Token,                      // instance — the token contract address
+    GracePeriod,                // instance — seconds allowed for charge window
+    MerchantWhitelist(Address), // persistent — true if merchant is whitelisted
+    WhitelistEnabled,           // instance — true if whitelist is active
+    FeeCollector,               // instance — fee collector address
+    FeeBps,                     // instance — protocol fee in basis points
+    ActiveCount,                // instance — running total of active subscriptions
+    MerchantRevenue(Address),   // persistent — cumulative revenue per merchant
+    DailyLimit(Address),        // temporary — user-set daily pay_per_use cap
+    DailySpent(Address),        // temporary — amount spent today via pay_per_use
 }
 ```
 
@@ -80,7 +90,7 @@ soroban contract invoke \
 Creates or overwrites a subscription for the calling user.
 
 ```
-subscribe(env: Env, user: Address, merchant: Address, amount: i128, interval: u64)
+subscribe(env: Env, user: Address, merchant: Address, amount: i128, interval: u64, token: Address, trial_period: Option<u64>)
 ```
 
 **Parameters**
@@ -91,10 +101,14 @@ subscribe(env: Env, user: Address, merchant: Address, amount: i128, interval: u6
 | `merchant` | `Address` | The payment recipient. |
 | `amount` | `i128` | Stroops to transfer per period. Must be > 0. |
 | `interval` | `u64` | Seconds between charges. Must be > 0. Common values: `86400` (1 day), `604800` (1 week), `2592000` (~30 days). |
+| `token` | `Address` | The SAC address of the token to use for this subscription. |
+| `trial_period` | `Option<u64>` | Optional seconds to delay the first charge. If set, `last_charged` is initialized to `now + trial_period`. |
 
 **Auth:** `user.require_auth()` — the transaction must be signed by `user`.
 
-**Storage written:** `DataKey::Subscription(user)` in persistent storage. `last_charged` is set to the current ledger timestamp.
+**Whitelist:** If the merchant whitelist is enabled, the `merchant` address must have been previously added by an admin via `add_merchant`.
+
+**Storage written:** `DataKey::Subscription(user)` in persistent storage. `last_charged` is set to the current ledger timestamp (or `now + trial_period` if provided).
 
 **Events emitted**
 
@@ -148,8 +162,10 @@ charge(env: Env, user: Address)
 1. Loads the subscription for `user`
 2. Asserts `active == true`
 3. Asserts `now >= last_charged + interval`
-4. Calls `transfer_from(contract, user, merchant, amount)` on the token contract
-5. Updates `last_charged = now`
+4. If a `grace_period` is set, asserts `now <= last_charged + interval + grace_period`
+5. If a protocol fee is set, splits `amount` between `FeeCollector` and `merchant`
+6. Calls `transfer_from(contract, user, recipient, amount)` on the token contract
+7. Updates `last_charged = now`
 
 **Events emitted**
 
@@ -166,6 +182,7 @@ data:   (merchant, amount, timestamp)
 | Subscription is cancelled | `"subscription is not active"` |
 | Subscription is paused | `"subscription is paused"` |
 | Interval has not elapsed | `"interval not elapsed yet"` |
+| Grace period elapsed | `"grace period elapsed"` |
 | Contract not initialized | `"not initialized"` |
 | Insufficient allowance | Host error from token contract |
 
@@ -397,6 +414,249 @@ soroban contract invoke \
 
 ---
 
+### `next_charge_at`
+
+Read-only view function. Returns the Unix timestamp of the next scheduled charge for a user.
+
+```
+next_charge_at(env: Env, user: Address) -> Option<u64>
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `user` | `Address` | The subscriber address to look up. |
+
+**Auth:** None.
+
+**Returns:** `Option<u64>` — Returns `None` if:
+- No subscription exists for the user
+- The subscription is inactive (cancelled)
+
+Returns `Some(last_charged + interval)` if the subscription is active.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --network testnet \
+  -- next_charge_at \
+  --user <USER_ADDRESS>
+```
+
+---
+
+### `batch_charge`
+
+Charges multiple subscribers in a single transaction. Individual failures do not abort the batch — every address is processed and its outcome is returned.
+
+```
+batch_charge(env: Env, users: Vec<Address>) -> Vec<ChargeResult>
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `users` | `Vec<Address>` | List of subscriber addresses to attempt charging. |
+
+**Auth:** None. Same permissionless model as `charge()`.
+
+**Returns:** `Vec<ChargeResult>` — one entry per input address, in order.
+
+```rust
+pub enum ChargeResult {
+    Charged,            // funds transferred successfully
+    Skipped,            // interval has not elapsed yet
+    NoSubscription,     // no subscription found for this address
+    Inactive,           // subscription is cancelled
+    Paused,             // subscription is paused
+    GracePeriodElapsed, // charge window has closed
+}
+```
+
+**Storage written:** `DataKey::Subscription(user)` updated for each `Charged` result. `DataKey::MerchantRevenue(merchant)` incremented for each `Charged` result.
+
+**Events emitted:** `("charged", user)` for each successfully charged user.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source <KEEPER_KEY> \
+  --network testnet \
+  -- batch_charge \
+  --users '["<USER_A>","<USER_B>","<USER_C>"]'
+```
+
+---
+
+### `get_active_count`
+
+Returns the current number of active subscriptions. Incremented by `subscribe()`, decremented by `cancel()`.
+
+```
+get_active_count(env: Env) -> u64
+```
+
+**Auth:** None.
+
+**Returns:** `u64` — total active subscriptions.
+
+**Storage read:** `DataKey::ActiveCount` in instance storage.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --network testnet \
+  -- get_active_count
+```
+
+---
+
+### `get_merchant_revenue`
+
+Returns the cumulative amount charged to a merchant's subscribers across all `charge()` and `pay_per_use()` calls.
+
+```
+get_merchant_revenue(env: Env, merchant: Address) -> i128
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `merchant` | `Address` | The merchant address to query. |
+
+**Auth:** None.
+
+**Returns:** `i128` — total stroops received by this merchant. Returns `0` if no charges have occurred.
+
+**Storage read:** `DataKey::MerchantRevenue(merchant)` in persistent storage.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --network testnet \
+  -- get_merchant_revenue \
+  --merchant <MERCHANT_ADDRESS>
+```
+
+---
+
+### `set_daily_limit`
+
+Sets a daily spending cap for `pay_per_use()` for the calling user. The limit is stored in temporary storage and resets automatically after approximately one day (~17,280 ledgers at 5 s/ledger).
+
+```
+set_daily_limit(env: Env, user: Address, limit: i128)
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `user` | `Address` | The subscriber. Must match the transaction signer. |
+| `limit` | `i128` | Maximum stroops spendable via `pay_per_use()` per day. Must be > 0. |
+
+**Auth:** `user.require_auth()`.
+
+**Storage written:** `DataKey::DailyLimit(user)` in temporary storage with TTL of ~1 day.
+
+**Enforcement:** Every `pay_per_use()` call checks `DailySpent(user) + amount <= DailyLimit(user)` before transferring. The running total is tracked in `DataKey::DailySpent(user)` (also temporary, same TTL).
+
+**Errors**
+
+| Condition | Panic message |
+| --- | --- |
+| `limit <= 0` | `"limit must be positive"` |
+| Spend would exceed limit | `"daily spending limit exceeded"` |
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source <USER_KEY> \
+  --network testnet \
+  -- set_daily_limit \
+  --user <USER_ADDRESS> \
+  --limit 50000000
+```
+
+---
+
+### `get_daily_limit`
+
+Returns the current daily spending limit for the calling user, or `None` if no limit is set.
+
+```
+get_daily_limit(env: Env, user: Address) -> Option<i128>
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `user` | `Address` | The subscriber address to query. |
+
+**Auth:** None.
+
+**Returns:** `Option<i128>` — current daily limit in stroops, or `None` if unset.
+
+**Storage read:** `DataKey::DailyLimit(user)` in temporary storage.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --network testnet \
+  -- get_daily_limit \
+  --user <USER_ADDRESS>
+```
+
+---
+
+### `get_daily_spent`
+
+Returns the amount spent today by the calling user via `pay_per_use()`.
+
+```
+get_daily_spent(env: Env, user: Address) -> i128
+```
+
+**Parameters**
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `user` | `Address` | The subscriber address to query. |
+
+**Auth:** None.
+
+**Returns:** `i128` — amount spent today in stroops. Returns `0` if no spend is recorded.
+
+**Storage read:** `DataKey::DailySpent(user)` in temporary storage.
+
+**CLI example**
+
+```bash
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --network testnet \
+  -- get_daily_spent \
+  --user <USER_ADDRESS>
+```
+
+---
+
 ## Units & Conversions
 
 All amounts are in **stroops** — the smallest unit of a Stellar token.
@@ -429,3 +689,122 @@ All events can be indexed by listening to the Stellar RPC event stream for the F
 | `cancelled` | `("cancelled", user_address)` | `()` |
 | `paused` | `("paused", user_address)` | `()` |
 | `resumed` | `("resumed", user_address)` | `()` |
+
+---
+
+## New Modules (Issues #96–#99)
+
+---
+
+### `subscribe` (updated)
+
+The `subscribe` function now accepts an optional `referrer` parameter:
+
+```
+subscribe(env, user, merchant, amount, interval, token, trial_period, referrer: Option<Address>)
+```
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `referrer` | `Option<Address>` | Optional address of the referrer who introduced this subscriber. Stored in `DataKey::Referral(user)` and emits a `("referred", user)` event. |
+
+---
+
+### `get_referrer`
+
+Returns the referrer address recorded for a subscriber.
+
+```
+get_referrer(env: Env, user: Address) -> Option<Address>
+```
+
+**Auth:** None.
+
+**Returns:** `Option<Address>` — `None` if no referrer was recorded.
+
+**Storage read:** `DataKey::Referral(user)` in persistent storage.
+
+---
+
+### `migrate`
+
+Upgrades contract storage to the latest schema version. Safe to call multiple times.
+
+```
+migrate(env: Env)
+```
+
+**Auth:** None (admin restriction can be added in future versions).
+
+**Storage written:** `DataKey::SchemaVersion` in instance storage.
+
+---
+
+### `get_schema_version`
+
+Returns the current storage schema version.
+
+```
+get_schema_version(env: Env) -> u32
+```
+
+**Auth:** None.
+
+**Returns:** `u32` — defaults to `1` before the first `migrate()` call.
+
+---
+
+### `set_metadata`
+
+Attaches a short label string (e.g. plan name) to the caller's subscription.
+
+```
+set_metadata(env: Env, user: Address, label: String)
+```
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `user` | `Address` | The subscriber. Must match the transaction signer. |
+| `label` | `String` | Short display label (e.g. `"pro"`, `"basic"`). |
+
+**Auth:** `user.require_auth()`.
+
+**Storage written:** `DataKey::SubscriptionMeta(user)` in persistent storage.
+
+---
+
+### `get_metadata`
+
+Returns the metadata label for a subscriber.
+
+```
+get_metadata(env: Env, user: Address) -> Option<String>
+```
+
+**Auth:** None.
+
+**Returns:** `Option<String>` — `None` if no label has been set.
+
+---
+
+### `get_charge_history`
+
+Returns the last (up to 12) charge timestamps for a subscriber, ordered oldest → newest.
+
+```
+get_charge_history(env: Env, user: Address) -> Vec<u64>
+```
+
+**Auth:** None.
+
+**Returns:** `Vec<u64>` — UNIX timestamps of successful `charge()` calls. Empty if no charges have occurred.
+
+**Storage read:** `DataKey::ChargeHistory(user)` in persistent storage.
+
+---
+
+### Updated Events Reference
+
+| Event name | Topic | Data |
+| --- | --- | --- |
+| `referred` | `("referred", user_address)` | `referrer_address` |

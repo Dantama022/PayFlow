@@ -1,52 +1,50 @@
 import React, { useState } from "react";
 import { buildSubscribeTx } from "../stellar";
 import { friendlyError } from "../utils/errors";
+import { STROOPS_PER_XLM, BILLING_INTERVALS } from "../constants";
+import { useFormValidation } from "../hooks/useFormValidation";
+import { useToast } from "../hooks/useToast";
+import { useTransaction } from "../hooks/useTransaction";
+import ToastContainer from "./Toast";
 
 interface Props {
   userKey: string;
   onSign: (xdr: string) => Promise<string>;
   onSuccess: () => void;
+  announce: (message: string) => void;
 }
 
-const INTERVALS = [
-  { label: "Daily", value: 86_400 },
-  { label: "Weekly", value: 604_800 },
-  { label: "Monthly (~30d)", value: 2_592_000 },
-];
-
-const TRIAL_DURATIONS = [
-  { label: "No free trial", value: 0 },
-  { label: "7 days", value: 7 },
-  { label: "14 days", value: 14 },
-  { label: "30 days", value: 30 },
-];
-
-export default function SubscribeForm({ userKey, onSign, onSuccess }: Props) {
+export default function SubscribeForm({ userKey, onSign, onSuccess, announce }: Props) {
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
-  const [interval, setInterval] = useState(INTERVALS[2].value);
-  const [trialDays, setTrialDays] = useState(TRIAL_DURATIONS[0].value);
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [interval, setInterval] = useState(BILLING_INTERVALS[2].value);
+  const { errors, validate } = useFormValidation();
+  const { toasts, addToast, removeToast } = useToast();
+  const tx = useTransaction();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus(null);
-    setLoading(true);
-    try {
-      // Convert XLM → stroops (1 XLM = 10_000_000)
-      const stroops = BigInt(Math.round(parseFloat(amount) * 10_000_000));
-      const xdr = await buildSubscribeTx(userKey, merchant, stroops, BigInt(interval), undefined, trialDays);
-      const hash = await onSign(xdr);
-      setStatus(`Subscribed! tx: ${hash.slice(0, 12)}…`);
+    if (!validate({ merchant, amount, interval })) return;
+
+    announce("Transaction submitted");
+    const hash = await tx.submit(async () => {
+      const stroops = BigInt(Math.round(parseFloat(amount) * STROOPS_PER_XLM));
+      const xdr = await buildSubscribeTx(userKey, merchant, stroops, BigInt(interval));
+      return onSign(xdr);
+    });
+
+    if (hash) {
+      addToast(`Subscribed! tx: ${hash.slice(0, 12)}…`, "success");
+      announce("Transaction confirmed");
       onSuccess();
-    } catch (e: unknown) {
-      const rawMessage = e instanceof Error ? e.message : String(e);
-      setStatus(`Error: ${friendlyError(rawMessage)}`);
-    } finally {
-      setLoading(false);
+    } else if (tx.error) {
+      const msg = `Error: ${friendlyError(tx.error)}`;
+      addToast(msg, "error");
+      announce(msg);
     }
   }
+
+  const pending = tx.status === "pending";
 
   return (
     <form onSubmit={handleSubmit} className="subscribe-form">
@@ -60,6 +58,7 @@ export default function SubscribeForm({ userKey, onSign, onSuccess }: Props) {
           onChange={(e) => setMerchant(e.target.value)}
           required
         />
+        {errors.merchant && <span className="text-error">{errors.merchant}</span>}
       </label>
 
       <label className="form-group">
@@ -73,45 +72,26 @@ export default function SubscribeForm({ userKey, onSign, onSuccess }: Props) {
           onChange={(e) => setAmount(e.target.value)}
           required
         />
+        {errors.amount && <span className="text-error">{errors.amount}</span>}
       </label>
 
       <label className="form-group">
         <span className="form-label">Billing interval</span>
         <select value={interval} onChange={(e) => setInterval(Number(e.target.value))}>
-          {INTERVALS.map((i) => (
+          {BILLING_INTERVALS.map((i) => (
             <option key={i.value} value={i.value}>
               {i.label}
             </option>
           ))}
         </select>
+        {errors.interval && <span className="text-error">{errors.interval}</span>}
       </label>
 
-      <label className="form-group">
-        <span className="form-label">Free trial period</span>
-        <select value={trialDays} onChange={(e) => setTrialDays(Number(e.target.value))}>
-          {TRIAL_DURATIONS.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <button type="submit" disabled={loading} className="btn-primary subscribe-form__submit">
-        {loading ? "Signing…" : "Subscribe"}
+      <button type="submit" disabled={pending} className="btn-primary subscribe-form__submit">
+        {pending ? "Confirming…" : "Subscribe"}
       </button>
 
-      {status && (
-        /* Dynamic: color is error/success state-driven — inline color is intentional */
-        <p
-          className="form-status"
-          style={{
-            color: status.startsWith("Error") ? "var(--color-danger)" : "var(--color-success)",
-          }}
-        >
-          {status}
-        </p>
-      )}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </form>
   );
 }

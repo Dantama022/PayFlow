@@ -1,15 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { getSubscription } from "../stellar";
-
-type Subscription = {
-  merchant: string;
-  amount: string;
-  interval: number;
-  last_charged: number;
-  active: boolean;
-  paused: boolean;
-  trial_duration: number;
-};
+import type { Subscription } from "../types";
 
 export function useSubscription(userKey: string, refreshTrigger?: number) {
   const [subscription, setSubscription] = useState<Subscription | null>(null);

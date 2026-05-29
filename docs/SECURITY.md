@@ -68,12 +68,6 @@ The contract is written in Rust, which eliminates entire classes of vulnerabilit
 
 ## Known Limitations
 
-### No TTL Management
-
-Persistent storage entries on Stellar have a TTL (time-to-live). If a subscription's storage entry expires, it will be evicted from the ledger and the subscription will be lost. Currently, FlowPay does not automatically extend TTLs. A future version should call `env.storage().persistent().extend_ttl()` on active subscriptions during `charge()`.
-
-**Mitigation:** On Testnet this is not a concern for development. For Mainnet, ensure a keeper service also extends TTLs regularly.
-
 ### Single Token Per Contract
 
 Each deployed FlowPay contract is initialized with a single token. Supporting multiple tokens (e.g. both XLM and USDC) requires either deploying multiple contracts or refactoring the storage model. Multi-token support is a planned feature.
@@ -90,7 +84,8 @@ If you discover a security vulnerability in FlowPay, please do **not** open a pu
 
 Instead, report it privately:
 
-- **Email:** [leave blank — add your contact email]
+- **GitHub Security Advisories:** Use the "Security" tab in this repository to report a vulnerability privately
+- **Email:** security@payflow.dev (for urgent or sensitive reports)
 - **Subject:** `[FlowPay Security] Brief description`
 
 Please include:
@@ -100,7 +95,7 @@ Please include:
 - The potential impact
 - Any suggested mitigations
 
-We will acknowledge your report within 48 hours and aim to release a fix within 7 days for critical issues.
+We will acknowledge your report within 48 hours and aim to release a fix within 14 days for critical issues, depending on complexity.
 
 We appreciate responsible disclosure and will credit researchers in the release notes unless they prefer to remain anonymous.
 

@@ -72,6 +72,29 @@
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+   Light Theme Overrides
+   ───────────────────────────────────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  --color-surface: #f8fafc;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #f1f5f9;
+
+  --color-text: #0f172a;
+  --color-text-muted: #475569;
+  --color-text-subtle: #64748b;
+
+  --color-border: #e2e8f0;
+  --color-border-light: #cbd5e1;
+
+  --color-success-bg: #dcfce7;
+  --color-success-text: #166534;
+
+  --color-danger-bg: #fee2e2;
+  --color-danger-text: #991b1b;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
    Global Styles
    ───────────────────────────────────────────────────────────────────────────── */
 
@@ -260,6 +283,11 @@ input::placeholder {
   color: white;
 }
 
+.badge-warning {
+  background: #451a03;
+  color: #fbbf24;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
    Typography Utilities
    ───────────────────────────────────────────────────────────────────────────── */
@@ -267,21 +295,27 @@ input::placeholder {
 .text-xs {
   font-size: var(--text-xs);
 }
+
 .text-sm {
   font-size: var(--text-sm);
 }
+
 .text-base {
   font-size: var(--text-base);
 }
+
 .text-lg {
   font-size: var(--text-lg);
 }
+
 .text-xl {
   font-size: var(--text-xl);
 }
+
 .text-2xl {
   font-size: var(--text-2xl);
 }
+
 .text-3xl {
   font-size: var(--text-3xl);
 }
@@ -289,9 +323,11 @@ input::placeholder {
 .text-muted {
   color: var(--color-text-muted);
 }
+
 .text-subtle {
   color: var(--color-text-subtle);
 }
+
 .text-mono {
   font-family: monospace;
 }
@@ -299,15 +335,19 @@ input::placeholder {
 .font-normal {
   font-weight: var(--font-normal);
 }
+
 .font-medium {
   font-weight: var(--font-medium);
 }
+
 .font-semibold {
   font-weight: var(--font-semibold);
 }
+
 .font-bold {
   font-weight: var(--font-bold);
 }
+
 .font-extrabold {
   font-weight: var(--font-extrabold);
 }
@@ -319,12 +359,15 @@ input::placeholder {
 .gap-2 {
   gap: var(--space-2);
 }
+
 .gap-3 {
   gap: var(--space-3);
 }
+
 .gap-4 {
   gap: var(--space-4);
 }
+
 .gap-6 {
   gap: var(--space-6);
 }
@@ -332,12 +375,15 @@ input::placeholder {
 .mb-2 {
   margin-bottom: var(--space-2);
 }
+
 .mb-3 {
   margin-bottom: var(--space-3);
 }
+
 .mb-4 {
   margin-bottom: var(--space-4);
 }
+
 .mb-6 {
   margin-bottom: var(--space-6);
 }
@@ -345,9 +391,11 @@ input::placeholder {
 .mt-2 {
   margin-top: var(--space-2);
 }
+
 .mt-4 {
   margin-top: var(--space-4);
 }
+
 .mt-6 {
   margin-top: var(--space-6);
 }
@@ -355,6 +403,7 @@ input::placeholder {
 .p-4 {
   padding: var(--space-4);
 }
+
 .p-6 {
   padding: var(--space-6);
 }
@@ -367,6 +416,7 @@ input::placeholder {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
@@ -378,14 +428,16 @@ input::placeholder {
   height: var(--space-4);
 }
 
+.balance-skeleton {
+  width: 80px;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .skeleton {
-    background: linear-gradient(
-      90deg,
-      var(--color-surface-raised) 25%,
-      var(--color-border-light) 50%,
-      var(--color-surface-raised) 75%
-    );
+    background: linear-gradient(90deg,
+        var(--color-surface-raised) 25%,
+        var(--color-border-light) 50%,
+        var(--color-surface-raised) 75%);
     background-size: 200% 100%;
     animation: shimmer 1.4s ease-in-out infinite;
   }
@@ -398,14 +450,17 @@ input::placeholder {
 .flex {
   display: flex;
 }
+
 .flex-col {
   flex-direction: column;
 }
+
 .flex-between {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+
 .flex-center {
   display: flex;
   justify-content: center;
@@ -415,6 +470,251 @@ input::placeholder {
 .w-full {
   width: 100%;
 }
+
 .text-center {
   text-align: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Micro-interaction: Fade-in (Issue #34 pattern)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fadeIn var(--transition-base) ease-in-out;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Confirmation Modal (Issue #58)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@keyframes modal-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 15, 20, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-card {
+  max-width: 400px;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .modal-card {
+    animation: modal-enter 200ms ease-out;
+  }
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Theme Toggle Button (Issue #52)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Copy Button (Issue #56)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1) var(--space-2);
+  line-height: 1;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Network Warning Banner (Issue #128)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.network-warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: #451a03;
+  color: #fbbf24;
+  border: 1px solid #92400e;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.merchant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.merchant-row__address {
+  font-family: monospace;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Subscription Card Styles
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.subscription-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-6);
+}
+
+.subscription-card__title {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  color: var(--color-text);
+}
+
+.subscription-card__label {
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-medium);
+  margin-top: var(--space-1);
+}
+
+.subscription-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.allowance-card__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.allowance-display {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.subscription-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.subscription-row__label {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.subscription-row__value {
+  font-size: var(--text-base);
+  color: var(--color-text);
+  font-weight: var(--font-medium);
+}
+
+.cancel-btn {
+  width: 100%;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Screen Reader Only Utility (Issue #169)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Responsive Layout (Issue #168)
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.app-shell {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.app-shell--mobile {
+  padding: var(--space-3);
+}
+
+.app-shell--mobile .card {
+  padding: var(--space-4);
+}
+
+.app-shell--mobile .app-header__title {
+  font-size: var(--text-xl);
+}
+
+@media (max-width: 639px) {
+  .app-shell {
+    padding: var(--space-3);
+  }
+
+  .card {
+    padding: var(--space-4);
+  }
+
+  .wallet-bar__content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .card.wallet-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }

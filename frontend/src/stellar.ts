@@ -8,26 +8,48 @@ import {
   Contract,
   Networks,
   TransactionBuilder,
+  Transaction,
   BASE_FEE,
   nativeToScVal,
   Address,
   xdr,
 } from "@stellar/stellar-sdk";
-import { Server } from "@stellar/stellar-sdk/rpc";
+import { Server, assembleTransaction } from "@stellar/stellar-sdk/rpc";
+import type { Subscription, ChargeEvent } from "./types";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export const RPC_URL = "https://soroban-testnet.stellar.org";
-export const NETWORK_PASSPHRASE = 
+export const RPC_URL =
+  import.meta.env.VITE_RPC_URL ?? "https://soroban-testnet.stellar.org";
+export const NETWORK_PASSPHRASE =
   import.meta.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
 
 // Replace with your deployed contract ID after `soroban contract deploy`
 export const CONTRACT_ID = import.meta.env.VITE_CONTRACT_ID ?? "";
+export const TOKEN_CONTRACT_ID = import.meta.env.VITE_TOKEN_CONTRACT_ID ?? "";
 
 // Default token address (XLM) - replace with your actual token
 export const DEFAULT_TOKEN = import.meta.env.VITE_DEFAULT_TOKEN ?? "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 
 export const server = new Server(RPC_URL);
+
+export interface MerchantSubscriber {
+  subscriber: string;
+  amount: string;
+  interval: number;
+  lastCharged: number;
+  nextChargeAt: number;
+  nextChargeDate: string;
+}
+
+export interface ContractEvent {
+  eventName: string;
+  address: string;
+  data: unknown;
+  ledger: number;
+  timestamp: string;
+  txHash: string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,23 +78,12 @@ async function buildTx(
   const simResult = await server.simulateTransaction(tx);
   if ("error" in simResult) throw new Error(simResult.error);
 
-  // assembleTransaction attaches the soroban data / auth entries
-  const { assembleTransaction } = await import("@stellar/stellar-sdk/rpc");
   const assembled = assembleTransaction(tx, simResult) as unknown as { toXDR(): string };
   return assembled.toXDR();
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Returns the XDR of a `subscribe` transaction ready for wallet signing.
- * @param user        subscriber public key
- * @param merchant    merchant public key
- * @param amount      amount in stroops (1 XLM = 10_000_000 stroops)
- * @param intervalSec seconds between charges (e.g. 2_592_000 = 30 days)
- * @param tokenAddr   token contract address (defaults to native XLM)
- * @param trialDays   free trial duration in days (0 = no trial)
- */
 export async function buildSubscribeTx(
   user: string,
   merchant: string,
@@ -92,18 +103,94 @@ export async function buildSubscribeTx(
   ]);
 }
 
-/** Returns the XDR of a `cancel` transaction ready for wallet signing. */
 export async function buildCancelTx(user: string): Promise<string> {
   return buildTx(user, "cancel", [addressVal(user)]);
 }
 
-/** Returns the XDR of a `pay_per_use` transaction ready for wallet signing. */
 export async function buildPayPerUseTx(user: string, amount: bigint): Promise<string> {
-  return buildTx(user, "pay_per_use", [addressVal(user), nativeToScVal(amount, { type: "i128" })]);
+  return buildTx(user, "pay_per_use", [
+    addressVal(user),
+    nativeToScVal(amount, { type: "i128" }),
+  ]);
 }
 
-/** Read-only: fetch a user's subscription from the contract. */
-export async function getSubscription(user: string) {
+export async function buildSetDailyLimitTx(user: string, amount: bigint): Promise<string> {
+  return buildTx(user, "set_daily_limit", [
+    addressVal(user),
+    nativeToScVal(amount, { type: "i128" }),
+  ]);
+}
+
+export async function getDailyLimit(user: string): Promise<bigint | null> {
+  const contract = new Contract(CONTRACT_ID);
+  const account = await server.getAccount(user);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call("get_daily_limit", addressVal(user)))
+    .setTimeout(30)
+    .build();
+
+  const result = await server.simulateTransaction(tx);
+  if ("error" in result) throw new Error((result as any).error);
+
+  const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+  if (!retval || retval.switch().name === "scvVoid") return null;
+
+  return BigInt(retval.i128().toString());
+}
+
+export async function getDailySpent(user: string): Promise<bigint> {
+  const contract = new Contract(CONTRACT_ID);
+  const account = await server.getAccount(user);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(contract.call("get_daily_spent", addressVal(user)))
+    .setTimeout(30)
+    .build();
+
+  const result = await server.simulateTransaction(tx);
+  if ("error" in result) throw new Error((result as any).error);
+
+  const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+  if (!retval || retval.switch().name === "scvVoid") return 0n;
+
+  return BigInt(retval.i128().toString());
+}
+
+export async function buildApproveTx(user: string, tokenId: string, spender: string, amount: bigint): Promise<string> {
+  const tokenContract = new Contract(tokenId);
+  const account = await server.getAccount(user);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      tokenContract.call(
+        "approve",
+        addressVal(user),
+        addressVal(spender),
+        nativeToScVal(amount, { type: "i128" }),
+        nativeToScVal(999999999n, { type: "u64" })
+      )
+    )
+    .setTimeout(30)
+    .build();
+
+  const simResult = await server.simulateTransaction(tx);
+  if ("error" in simResult) throw new Error(simResult.error);
+
+  const assembled = assembleTransaction(tx, simResult) as unknown as { toXDR(): string };
+  return assembled.toXDR();
+}
+
+export async function getSubscription(user: string): Promise<Subscription | null> {
   const contract = new Contract(CONTRACT_ID);
   const account = await server.getAccount(user);
 
@@ -118,19 +205,18 @@ export async function getSubscription(user: string) {
   const result = await server.simulateTransaction(tx);
   if ("error" in result) throw new Error(result.error);
 
-  // result.result?.retval is an xdr.ScVal — parse it
   const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
   if (!retval) return null;
 
-  // ScVal Option<Subscription> — void means None
   if (retval.switch().name === "scvVoid") return null;
 
-  // Unwrap the Option and map struct fields
-  const inner = retval.value(); // ScVal of the inner struct
+  const inner = retval.value();
   const fields: Record<string, unknown> = {};
+
   for (const entry of inner.map() ?? []) {
     const key = entry.key().sym().toString();
     const val = entry.val();
+
     switch (key) {
       case "merchant":
         fields[key] = Address.fromScVal(val).toString();
@@ -149,13 +235,176 @@ export async function getSubscription(user: string) {
         break;
     }
   }
-  return fields as {
-    merchant: string;
-    amount: string;
-    interval: number;
-    last_charged: number;
-    active: boolean;
-    paused: boolean;
-    trial_duration: number;
+
+  const label = await getSubscriptionMetadata(user);
+
+  return {
+    ...(fields as {
+      merchant: string;
+      amount: string;
+      interval: number;
+      last_charged: number;
+      active: boolean;
+    }),
+    label: label || undefined,
   };
+}
+
+export async function getSubscriptionMetadata(user: string): Promise<string | null> {
+  try {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
+
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_metadata", addressVal(user)))
+      .setTimeout(30)
+      .build();
+
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) return null;
+
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return null;
+
+    return retval.str().toString();
+  } catch {
+    return null;
+  }
+}
+
+export async function getMerchantSubscribers(_merchant: string): Promise<MerchantSubscriber[]> {
+  // Placeholder: this would ideally fetch from an indexer or contract events.
+  return [];
+}
+
+export async function getBalance(publicKey: string): Promise<string> {
+  try {
+    const resp = await fetch(`https://horizon-testnet.stellar.org/accounts/${publicKey}`);
+    if (!resp.ok) throw new Error(`Horizon API error: ${resp.status}`);
+    const data = await resp.json();
+    const nativeBalance = data.balances?.find((b: { asset_type: string; balance: string }) => b.asset_type === "native");
+    return nativeBalance?.balance ?? "0";
+  } catch {
+    return "0";
+  }
+}
+
+export async function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): Promise<bigint> {
+  if (!tokenId) throw new Error("VITE_TOKEN_CONTRACT_ID is not configured.");
+
+  try {
+    const tokenContract = new Contract(tokenId);
+    const account = await server.getAccount(owner);
+
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(
+        tokenContract.call(
+          "allowance",
+          addressVal(owner),
+          nativeToScVal(CONTRACT_ID, { type: "address" })
+        )
+      )
+      .setTimeout(30)
+      .build();
+
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) return 0n;
+
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return 0n;
+
+    return BigInt(retval.i128().toString());
+  } catch {
+    return 0n;
+  }
+}
+
+// ── Event Fetching ────────────────────────────────────────────────────────────
+
+/**
+ * Fetch contract events by event name, optionally filtered by address.
+ * eventName matches the first topic (e.g. "subscribed", "charged", "cancelled", "pay_per_use").
+ */
+export async function fetchEvents(
+  eventName: string,
+  address?: string
+): Promise<ContractEvent[]> {
+  try {
+    const response = await server.getEvents({
+      startLedger: undefined,
+      filters: [{ type: "contract", contractIds: [CONTRACT_ID] }],
+      limit: 100,
+    });
+
+    return response.events
+      .filter((event: any) => {
+        if (!event.topic || event.topic.length < 1) return false;
+        if (event.topic[0]?.toString() !== eventName) return false;
+        if (address && event.topic[1]?.toString() !== address) return false;
+        return true;
+      })
+      .map((event: any) => ({
+        eventName,
+        address: event.topic[1]?.toString() ?? "",
+        data: event.value,
+        ledger: event.ledger ?? 0,
+        timestamp: event.ledgerCloseTime
+          ? new Date(event.ledgerCloseTime * 1000).toISOString()
+          : new Date().toISOString(),
+        txHash: event.txHash ?? event.id ?? "",
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// ── Charge History ────────────────────────────────────────────────────────────
+
+export async function getChargeHistory(user: string): Promise<ChargeEvent[]> {
+  try {
+    const response = await server.getEvents({
+      startLedger: undefined,
+      filters: [{ type: "contract", contractIds: [CONTRACT_ID] }],
+      limit: 50,
+    });
+
+    return response.events
+      .filter((event: any) => {
+        if (!event.topic || event.topic.length < 2) return false;
+        const eventType = event.topic[0]?.toString();
+        if (eventType !== "charged") return false;
+        return event.topic[1]?.toString() === user;
+      })
+      .map((event: any) => {
+        let merchant = "";
+        let amount = "0";
+        let timestamp = 0;
+
+        try {
+          const val = event.value;
+          if (val?._value?.merchant) merchant = val._value.merchant.toString();
+          if (val?._value?.amount) amount = val._value.amount.toString();
+          if (val?._value?.charged_at) timestamp = Number(val._value.charged_at);
+          if (timestamp === 0 && event.ledgerCloseTime) timestamp = event.ledgerCloseTime;
+        } catch (e) {
+          console.warn("Charge event parsing failed:", e);
+        }
+
+        return {
+          date: new Date(timestamp * 1000),
+          amount,
+          txHash: event.txHash || event.id || "",
+          merchant,
+        };
+      })
+      .sort((a: ChargeEvent, b: ChargeEvent) => b.date.getTime() - a.date.getTime());
+  } catch {
+    return [];
+  }
 }
