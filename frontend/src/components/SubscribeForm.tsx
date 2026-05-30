@@ -43,7 +43,7 @@ export default function SubscribeForm({ userKey, onSign, onSuccess, announce }: 
     });
 
     if (hash) {
-      addToast(`Subscribed! tx: ${hash.slice(0, 12)}…`, "success");
+      addToast("Subscribed!", "success", hash);
       announce("Transaction confirmed");
       onSuccess();
     } else if (tx.error) {
