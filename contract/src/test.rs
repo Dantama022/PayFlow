@@ -850,6 +850,35 @@ fn test_no_referral_returns_none() {
     assert!(client.get_referrer(&user).is_none());
 }
 
+#[test]
+fn test_referral_updates_on_resubscribe() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let referrer_a = Address::generate(&env);
+    let referrer_b = Address::generate(&env);
+
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &Some(referrer_a.clone()));
+    assert_eq!(client.get_referrer(&user), Some(referrer_a));
+
+    client.subscribe(&user, &merchant, &2_0000000, &172800, &token_addr, &None, &Some(referrer_b.clone()));
+    assert_eq!(client.get_referrer(&user), Some(referrer_b));
+}
+
+#[test]
+fn test_referral_clears_on_resubscribe_with_none() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let referrer = Address::generate(&env);
+
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &Some(referrer.clone()));
+    assert_eq!(client.get_referrer(&user), Some(referrer));
+
+    client.subscribe(&user, &merchant, &2_0000000, &172800, &token_addr, &None, &None);
+    assert!(client.get_referrer(&user).is_none());
+}
+
 // ─────────────────────────────────────────────
 // Issue #97: migration tests
 // ─────────────────────────────────────────────
