@@ -529,6 +529,7 @@ impl FlowPay {
     pub fn set_grace_period(env: Env, seconds: u64) {
         admin::require_admin(&env);
         grace::set_grace_period(&env, seconds);
+        events::publish_grace_period_updated(&env, seconds);
     }
 
     /// Returns the current grace period in seconds. Returns 0 if not set.

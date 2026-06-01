@@ -66,3 +66,8 @@ pub fn publish_fee_updated(env: &Env, collector: &Address, bps: u32) {
         (collector.clone(), bps),
     );
 }
+
+pub fn publish_grace_period_updated(env: &Env, seconds: u64) {
+    env.events()
+        .publish((Symbol::new(env, "grace_period_updated"),), seconds);
+}

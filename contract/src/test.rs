@@ -1063,3 +1063,26 @@ fn test_set_fee_emits_event() {
     assert_eq!(emitted_collector, collector);
     assert_eq!(emitted_bps, 100u32);
 }
+
+// ─────────────────────────────────────────────
+// Issue: grace_period_updated event on set_grace_period
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_set_grace_period_emits_event() {
+    let (env, contract_id, _token_addr, user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    client.set_grace_period(&7200u64);
+
+    let events = env.events().all();
+    let (_, topics, data) = events.get(events.len() - 1).unwrap();
+    let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let emitted_seconds: u64 = data.try_into_val(&env).unwrap();
+
+    assert_eq!(topic_symbol, Symbol::new(&env, "grace_period_updated"));
+    assert_eq!(emitted_seconds, 7200u64);
+}
