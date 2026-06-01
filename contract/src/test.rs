@@ -156,6 +156,74 @@ fn test_subscription_struct_fields_match_input() {
 }
 
 #[test]
+#[should_panic]
+fn test_subscribe_non_whitelisted_merchant_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.set_whitelist_enabled(&true);
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+}
+
+#[test]
+fn test_subscribe_whitelisted_merchant_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.set_whitelist_enabled(&true);
+    client.add_merchant(&merchant);
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert_eq!(sub.merchant, merchant);
+}
+
+#[test]
+fn test_set_whitelist_enabled_false_allows_any_merchant() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.set_whitelist_enabled(&true);
+    client.set_whitelist_enabled(&false);
+    client.subscribe(&user, &merchant, &1_0000000, &86400, &token_addr, &None, &None);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert_eq!(sub.merchant, merchant);
+}
+
+#[test]
+#[should_panic]
+fn test_non_admin_add_and_remove_merchant_panics() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    env.set_auths(&[]);
+
+    client.add_merchant(&merchant);
+    client.remove_merchant(&merchant);
+}
+
+#[test]
 fn test_cancel() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
