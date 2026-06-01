@@ -575,6 +575,11 @@ impl FlowPay {
         whitelist::set_whitelist_enabled(&env, enabled);
     }
 
+    /// Returns whether the merchant whitelist is currently enabled.
+    pub fn is_whitelist_enabled(env: Env) -> bool {
+        whitelist::is_whitelist_enabled(&env)
+    }
+
     /// Sets the protocol fee collection settings.
     /// Only the contract admin can call this.
     pub fn set_fee(env: Env, collector: Address, bps: u32) {
