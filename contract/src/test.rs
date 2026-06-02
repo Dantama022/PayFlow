@@ -2293,6 +2293,89 @@ fn test_set_grace_period_emits_event() {
 }
 
 // ─────────────────────────────────────────────
+// Issue #195: grace period charge behavior
+// ─────────────────────────────────────────────
+
+#[test]
+fn test_charge_within_grace_window_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let grace_period: u64 = 86400;
+    let interval: u64 = 86400;
+    client.set_grace_period(&grace_period);
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &interval,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    // Past billing interval but still inside grace window
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period / 2;
+    });
+
+    client.charge(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert_eq!(sub.last_charged, env.ledger().timestamp());
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #9)")]
+fn test_charge_after_grace_window_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let grace_period: u64 = 86400;
+    let interval: u64 = 86400;
+    client.set_grace_period(&grace_period);
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &interval,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period + 1;
+    });
+
+    client.charge(&user);
+}
+
+#[test]
+#[should_panic]
+fn test_non_admin_set_grace_period_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    env.set_auths(&[]);
+
+    client.set_grace_period(&3600u64);
+}
+
+// ─────────────────────────────────────────────
 // Issue #243: Token address validation
 // ─────────────────────────────────────────────
 

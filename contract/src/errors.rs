@@ -32,6 +32,8 @@ pub enum ContractError {
     MetadataLabelTooLong = 11,
     /// Returned when a user attempts to refer themselves
     SelfReferral = 11,
+    /// Returned when the token address is not a contract
+    InvalidTokenAddress = 12,
     InvalidTokenAddress = 12,
     /// Returned when a payment amount is greater than the configured maximum
     AmountExceedsMaximum = 12,
