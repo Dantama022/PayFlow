@@ -147,3 +147,10 @@ pub fn publish_subscription_interval_updated(
         (old_interval, new_interval),
     );
 }
+
+pub fn publish_merchant_withdrawal(env: &Env, merchant: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "merchant_withdrawal"), merchant.clone()),
+        amount,
+    );
+}
