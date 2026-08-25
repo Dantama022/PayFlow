@@ -4,8 +4,12 @@ use crate::{admin, errors::ContractError, events, DataKey};
 
 pub fn propose_upgrade(env: &Env, new_wasm_hash: BytesN<32>) {
     admin::require_admin(env);
-    env.storage().temporary().set(&DataKey::PendingUpgrade, &new_wasm_hash);
-    env.storage().temporary().extend_ttl(&DataKey::PendingUpgrade, 17280, 17280);
+    env.storage()
+        .temporary()
+        .set(&DataKey::PendingUpgrade, &new_wasm_hash);
+    env.storage()
+        .temporary()
+        .extend_ttl(&DataKey::PendingUpgrade, 17280, 17280);
     events::publish_upgrade_proposed(env, &new_wasm_hash);
 }
 
@@ -24,6 +28,14 @@ pub fn commit_upgrade(env: &Env) {
         .update_current_contract_wasm(pending_hash.clone());
 
     events::publish_upgraded(env, &pending_hash);
+}
+
+/// Returns the WASM hash queued for the next upgrade, or `None` if no upgrade
+/// is pending.
+///
+/// No auth required — this is a view-only read of temporary storage.
+pub fn get_pending_upgrade(env: &Env) -> Option<BytesN<32>> {
+    env.storage().temporary().get(&DataKey::PendingUpgrade)
 }
 
 #[cfg(test)]
