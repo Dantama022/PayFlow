@@ -4806,6 +4806,124 @@ fn test_non_admin_set_grace_period_panics() {
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// -------------------------------------------------------------
+// Issue #45: resume/cancel on grace-lapsed subscriptions
+// -------------------------------------------------------------
+
+
+/// resume on a grace-lapsed subscription must panic with ResumeGraceLapsed (#35).
+#[test]
+#[should_panic(expected = "Error(Contract, #35)")]
+fn test_resume_after_grace_lapse_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let grace_period: u64 = 86400;
+    let interval: u64 = 86400;
+    client.propose_grace_period(&grace_period);
+    client.commit_grace_period();
+
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+
+    // Advance past interval + grace window
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period + 1;
+    });
+
+    // resume must be rejected because the grace window has closed
+    client.resume(&user);
+}
+
+/// cancel on a grace-lapsed subscription must still succeed.
+#[test]
+fn test_cancel_after_grace_lapse_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let grace_period: u64 = 86400;
+    let interval: u64 = 86400;
+    client.propose_grace_period(&grace_period);
+    client.commit_grace_period();
+
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+
+    // Advance past interval + grace window
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period + 1;
+    });
+
+    // cancel must still be allowed so the user can exit cleanly
+    client.cancel(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.active, "subscription should be inactive after cancel");
+}
+
+/// resume within a valid (non-lapsed) grace window must succeed normally.
+#[test]
+fn test_resume_within_grace_window_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let grace_period: u64 = 86400;
+    let interval: u64 = 86400;
+    client.propose_grace_period(&grace_period);
+    client.commit_grace_period();
+
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+
+    // Advance past interval but still inside the grace window
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period / 2;
+    });
+
+    // resume must succeed because the grace window has not yet closed
+    client.resume(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.paused, "subscription should not be paused after resume");
+    assert!(sub.active, "subscription should remain active");
+}
+
+/// resume when no grace period is configured must succeed regardless of elapsed time.
+#[test]
+fn test_resume_no_grace_period_always_succeeds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    // No grace period set -- default is 0
+    let interval: u64 = 86400;
+    client.subscribe(&user, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
+    client.pause(&user);
+
+    // Advance far past the interval -- grace is 0 so lapse check is skipped
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval * 10;
+    });
+
+    // resume must succeed because grace_period == 0 means no lapse
+    client.resume(&user);
+
+    let sub = client.get_subscription(&user).unwrap();
+    assert!(!sub.paused, "subscription should not be paused after resume");
+}
+
 // Issue #243: Token address validation
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
