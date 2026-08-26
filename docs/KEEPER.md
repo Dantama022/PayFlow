@@ -397,6 +397,7 @@ Renew the lease before it expires. If a leader crashes, the lock expires and a f
 ## Related
 
 - `batch_charge(users)` — contract function reference: [`docs/API.md`](API.md)
+- **Admin ceremonies (upgrade / fee rotation):** pause keepers during WASM commits — [`docs/operations/two_step_admin_playbooks.md`](operations/two_step_admin_playbooks.md)
 - Full operations runbook (pagination deep-dive, Terraform IaC, **DLQ recovery, multi-instance coordination, RPC failover, incident pause**): [`docs/operations/keeper_runbook.md`](operations/keeper_runbook.md)
 - Full operations runbook (pagination deep-dive, Terraform IaC): [`docs/operations/keeper_runbook.md`](operations/keeper_runbook.md)
 - Event-driven charge tracking / gap detection: [`docs/EVENT-DRIVEN-GUIDE.md`](EVENT-DRIVEN-GUIDE.md)
