@@ -1,260 +1,204 @@
 # Deployment Guide
 
-This guide covers everything from building the contract to running it on Testnet and eventually Mainnet, including setting up a keeper service to trigger recurring charges.
+Covers building the FlowPay contract, deploying to Testnet and Mainnet using the provided scripts, post-deployment verification, and rollback procedures.
 
 ---
 
 ## Prerequisites
 
-| Tool | Install |
-| --- | --- |
-| Rust 1.70+ | `curl https://sh.rustup.rs -sSf \| sh` |
-| wasm32 target | `rustup target add wasm32-unknown-unknown` |
-| Soroban CLI | `cargo install --locked soroban-cli` |
-| Node.js 18+ | [nodejs.org](https://nodejs.org/) |
-| Freighter Wallet | [freighter.app](https://www.freighter.app/) |
+| Tool             | Version | Install                                     |
+| ---------------- | ------- | ------------------------------------------- |
+| Rust             | 1.70+   | `curl https://sh.rustup.rs -sSf \| sh`      |
+| wasm32 target    | —       | `rustup target add wasm32-unknown-unknown`  |
+| Soroban CLI      | 21.x    | `cargo install --locked soroban-cli`        |
+| Node.js          | 18+     | [nodejs.org](https://nodejs.org/)           |
+| Freighter Wallet | —       | [freighter.app](https://www.freighter.app/) |
 
 Verify your setup:
 
 ```bash
-rustc --version        # rustc 1.70+
-soroban --version      # soroban 21.x
-node --version         # v18+
+rustc --version    # 1.70+
+soroban --version  # 21.x
+node --version     # v18+
 ```
 
 ---
 
-## Part 1 — Build the Contract
+## Build
 
 ```bash
 cd contract
-
-# Run tests first — always
-cargo test
-
-# Build optimised WASM for deployment
 cargo build --release --target wasm32-unknown-unknown
 ```
 
-The compiled WASM will be at:
+The compiled WASM is written to `target/wasm32-unknown-unknown/release/flow_pay.wasm`.
+
+---
+
+## Testnet Deployment
+
+Use `scripts/deploy.sh` to deploy to Testnet:
+
+```bash
+bash scripts/deploy.sh --network testnet --source <DEPLOYER_KEYPAIR> --token <SAC_ADDRESS>
 ```
-contract/target/wasm32-unknown-unknown/release/flowpay.wasm
+
+The script:
+
+1. Uploads the WASM and obtains a hash.
+2. Deploys the contract and captures the contract ID.
+3. Calls `initialize(token, admin)` with the provided SAC address.
+4. Prints the contract ID — save it for subsequent steps.
+
+Set the returned contract ID in `frontend/.env`:
+
+```bash
+VITE_CONTRACT_ID=<CONTRACT_ID>
+VITE_RPC_URL=https://soroban-testnet.stellar.org
+VITE_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 ```
 
 ---
 
-## Part 2 — Deploy to Testnet
+## Mainnet Deployment
 
-### Step 1 — Create and fund a deployer account
+> **Warning:** FlowPay has not been formally audited. Do not manage real funds on Mainnet until an independent security audit is complete.
 
-```bash
-# Generate a new keypair and store it locally
-soroban keys generate --global deployer --network testnet
+FlowPay is currently deployed on **Testnet only**. When you are ready for Mainnet, follow the full phased checklist (security gates, key management, pre-deploy verification, deploy commands, post-deploy smoke tests, and go-live):
 
-# Check the address
-soroban keys address deployer
+**→ [`MAINNET-DEPLOYMENT.md`](MAINNET-DEPLOYMENT.md)**
 
-# Fund it via Friendbot (testnet only)
-curl "https://friendbot.stellar.org?addr=$(soroban keys address deployer)"
-```
-
-### Step 2 — Deploy the WASM
+Quick script form (only after audit + checklist Phase 0–1):
 
 ```bash
-soroban contract deploy \
-  --wasm contract/target/wasm32-unknown-unknown/release/flowpay.wasm \
-  --source deployer \
-  --network testnet
+bash scripts/deploy.sh --network mainnet --source <DEPLOYER_KEYPAIR> --token <SAC_ADDRESS>
 ```
 
-This prints your `CONTRACT_ID`. Save it — you'll need it for every subsequent step.
+Set the returned contract ID in `frontend/.env`:
 
-```
-# Example output:
-CXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```bash
+VITE_CONTRACT_ID=<CONTRACT_ID>
+VITE_RPC_URL=https://soroban-mainnet.stellar.org
+VITE_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
 ```
 
-### Step 3 — Initialize the contract
+---
 
-FlowPay must be initialized with a token contract address before it can be used. On Testnet, the native XLM Stellar Asset Contract (SAC) address is:
+## Post-Deployment Verification
 
+After deploying, run the post-deployment check script:
+
+```bash
+bash scripts/verify-contract.sh --network <testnet|mainnet> --id <CONTRACT_ID>
 ```
-CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+
+The script calls the following read functions and asserts expected values:
+
+| Check                | Expected           |
+| -------------------- | ------------------ |
+| `get_schema_version` | Latest version     |
+| `get_health`         | `is_healthy: true` |
+| Token configured     | Non-empty address  |
+| Admin configured     | Non-empty address  |
+
+You can also run these manually:
+
+```bash
+soroban contract invoke --id <CONTRACT_ID> --network <NETWORK> -- health_check
+soroban contract invoke --id <CONTRACT_ID> --network <NETWORK> -- get_protocol_stats
 ```
+
+---
+
+## State Migration
+
+When upgrading to a new WASM that introduces storage layout changes, call `migrate()` once after deployment:
 
 ```bash
 soroban contract invoke \
   --id <CONTRACT_ID> \
   --source deployer \
-  --network testnet \
-  -- initialize \
-  --token CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC
+  --network <NETWORK> \
+  -- migrate
 ```
 
-`initialize` can only be called once. Calling it again will panic with `already initialized`.
+Subsequent calls are safe no-ops. See [Migration History](#migration-history) below.
 
-### Step 4 — Verify deployment
+### Migration History
 
-```bash
-# Read back a subscription (should return nothing yet)
-soroban contract invoke \
-  --id <CONTRACT_ID> \
-  --network testnet \
-  -- get_subscription \
-  --user <ANY_ADDRESS>
-```
+| Version | Changes                                                                     |
+| ------- | --------------------------------------------------------------------------- |
+| v1      | Initial schema                                                              |
+| v2      | Added `SchemaVersion`, `Referral`, `SubscriptionMeta`, `ChargeHistory` keys |
 
 ---
 
-## Part 3 — Run the Frontend
+## Contract Upgrade (WASM)
 
 ```bash
-cd frontend
-npm install
-
-# Create your local env file
-echo "VITE_CONTRACT_ID=<CONTRACT_ID>" > .env.local
-
-npm run dev
-```
-
-Open `http://localhost:5173`. Make sure Freighter is set to **Testnet**.
-
-### Environment variables
-
-| Variable | Required | Description |
-| --- | --- | --- |
-| `VITE_CONTRACT_ID` | Yes | The deployed FlowPay contract ID |
-
----
-
-## Part 4 — Manual Contract Interaction (CLI)
-
-### Subscribe
-
-Before subscribing, the user must approve the FlowPay contract to spend their tokens:
-
-```bash
-# Approve FlowPay to spend up to 100 XLM on behalf of the user
-soroban contract invoke \
-  --id CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC \
-  --source <USER_KEY> \
-  --network testnet \
-  -- approve \
-  --from <USER_ADDRESS> \
-  --spender <CONTRACT_ID> \
-  --amount 1000000000 \
-  --expiration_ledger 999999
-```
-
-Then subscribe:
-
-```bash
-soroban contract invoke \
-  --id <CONTRACT_ID> \
-  --source <USER_KEY> \
-  --network testnet \
-  -- subscribe \
-  --user <USER_ADDRESS> \
-  --merchant <MERCHANT_ADDRESS> \
-  --amount 50000000 \
-  --interval 2592000
-```
-
-> `50000000` stroops = 5 XLM. `2592000` seconds = 30 days.
-
-### Charge
-
-```bash
-soroban contract invoke \
-  --id <CONTRACT_ID> \
-  --source <KEEPER_KEY> \
-  --network testnet \
-  -- charge \
-  --user <USER_ADDRESS>
-```
-
-### Cancel
-
-```bash
-soroban contract invoke \
-  --id <CONTRACT_ID> \
-  --source <USER_KEY> \
-  --network testnet \
-  -- cancel \
-  --user <USER_ADDRESS>
-```
-
----
-
-## Part 5 — Keeper Service
-
-Soroban has no native cron. You need an external service to call `charge()` periodically.
-
-### Reference implementation (Node.js)
-
-```javascript
-// keeper.js — run with: node keeper.js
-const { execSync } = require("child_process");
-
-const CONTRACT_ID = process.env.CONTRACT_ID;
-const KEEPER_KEY  = process.env.KEEPER_KEY;   // soroban key name
-const NETWORK     = process.env.NETWORK ?? "testnet";
-
-// In production, load this list from a database or by indexing contract events
-const subscribers = [
-  "GABC...",
-  "GDEF...",
-];
-
-for (const user of subscribers) {
-  try {
-    execSync(
-      `soroban contract invoke --id ${CONTRACT_ID} --source ${KEEPER_KEY} --network ${NETWORK} -- charge --user ${user}`,
-      { stdio: "inherit" }
-    );
-    console.log(`Charged ${user}`);
-  } catch {
-    // charge() panics if interval hasn't elapsed — that's expected, not an error
-    console.log(`Skipped ${user} (interval not elapsed or inactive)`);
-  }
-}
-```
-
-Run this on a schedule using cron, AWS Lambda, GitHub Actions scheduled workflow, or any task scheduler.
-
-**Example cron (daily at midnight):**
-```
-0 0 * * * node /path/to/keeper.js
-```
-
----
-
-## Part 6 — Mainnet Deployment
-
-> ⚠️ FlowPay has not been audited. Deploy to Mainnet at your own risk.
-
-The steps are identical to Testnet with two changes:
-
-1. Use `--network mainnet` instead of `--network testnet`
-2. Use the Mainnet native XLM SAC address (verify from the [Stellar documentation]())
-3. Fund your deployer account with real XLM instead of Friendbot
-
-```bash
-soroban contract deploy \
-  --wasm contract/target/wasm32-unknown-unknown/release/flowpay.wasm \
+# 1. Upload new WASM
+soroban contract upload \
   --source deployer \
-  --network mainnet
+  --network <NETWORK> \
+  --wasm target/wasm32-unknown-unknown/release/flow_pay.wasm
+
+# 2. Upgrade the deployed contract
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source deployer \
+  --network <NETWORK> \
+  -- upgrade <NEW_WASM_HASH>
+
+# 3. Run migration if storage layout changed
+soroban contract invoke \
+  --id <CONTRACT_ID> \
+  --source deployer \
+  --network <NETWORK> \
+  -- migrate
 ```
+
+An `upgraded` event is emitted on success.
 
 ---
 
-## Troubleshooting
+## Rollback Procedure
 
-| Error | Cause | Fix |
-| --- | --- | --- |
-| `already initialized` | `initialize()` called twice | Expected — contract is already set up |
-| `interval not elapsed yet` | `charge()` called too early | Wait for the interval to pass |
-| `no subscription found` | User hasn't subscribed | Call `subscribe()` first |
-| `subscription is not active` | User cancelled | Cannot charge a cancelled subscription |
-| `HostError: insufficient balance` | User's allowance is too low | User must call `approve()` again with a higher amount |
+FlowPay does not support automatic rollback. To revert to a previous WASM:
+
+1. **Retrieve the previous WASM hash** from the `upgraded` event emitted at the time of the last deployment (use `soroban events` or your indexer DB).
+2. **Re-upload the previous WASM** if needed (if the hash is still on-chain, skip this step):
+   ```bash
+   soroban contract upload --source deployer --network <NETWORK> --wasm <previous.wasm>
+   ```
+3. **Upgrade back to the previous hash**:
+   ```bash
+   soroban contract invoke \
+     --id <CONTRACT_ID> \
+     --source deployer \
+     --network <NETWORK> \
+     -- upgrade <PREVIOUS_WASM_HASH>
+   ```
+4. **Run migration** if the previous version had a lower schema version:
+   ```bash
+   soroban contract invoke --id <CONTRACT_ID> --source deployer --network <NETWORK> -- migrate
+   ```
+5. **Verify** the rollback using `verify-contract.sh`.
+
+> Note: Storage written by the newer WASM version remains on-chain. If the rollback WASM reads keys introduced by the newer version, those reads will return `None` or the default value — existing subscription data is unaffected.
+
+---
+
+## Frontend Environment Variables
+
+| Variable                  | Required | Default                               | Description                |
+| ------------------------- | -------- | ------------------------------------- | -------------------------- |
+| `VITE_CONTRACT_ID`        | Yes      | `""`                                  | Deployed contract ID       |
+| `VITE_RPC_URL`            | No       | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint       |
+| `VITE_NETWORK_PASSPHRASE` | No       | `Networks.TESTNET`                    | Stellar network passphrase |
+
+---
+
+## Related operations
+
+- Keeper bot setup and cadence: [`docs/KEEPER.md`](KEEPER.md)
+- Advanced keeper scenarios (DLQ replay, multi-instance locks, RPC failover, incident pause): [`docs/operations/keeper_runbook.md`](operations/keeper_runbook.md)

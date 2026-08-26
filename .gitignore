@@ -160,7 +160,6 @@ Thumbs.db
 dist/
 build/
 out/
-target/
 
 # Temporary files
 tmp/
@@ -193,3 +192,6 @@ config/local.json
 issue.md
 skills-lock.json
 
+contract/target/
+
+contract/target/
