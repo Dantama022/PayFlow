@@ -149,12 +149,13 @@ Returned by live `batch_charge` and by `get_batch_charge_estimate`. Defined in `
 
 ```rust
 pub enum ChargeResult {
-  Charged,            // live: funds transferred; estimate: would charge (see caveats)
-  Skipped,            // interval has not elapsed
-  NoSubscription,     // no subscription record
-  Inactive,           // cancelled / inactive
-  Paused,             // still paused
-  GracePeriodElapsed, // past the grace window
+  Charged,
+  Skipped,
+  NoSubscription,
+  Inactive,
+  Paused,
+  GracePeriodElapsed,
+  AllowanceInsufficient,
 }
 ```
 
@@ -166,6 +167,7 @@ pub enum ChargeResult {
 | `Inactive` | Cancelled / inactive | Same |
 | `Paused` | Still paused | Same |
 | `GracePeriodElapsed` | Past grace window | Same |
+| `AllowanceInsufficient` | Allowance below gross amount; no transfer | Same precheck path as live charge |
 
 This type is **not** the dry-run enum. Single-user simulation uses [`ChargeSimResult`](#chargesimresult).
 
