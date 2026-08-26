@@ -422,7 +422,7 @@ Do not deposit or route real Mainnet funds until every item is checked.
 - [ ] **Configuration / snapshot verification** — schema version matches release; subscription snapshot retained if migrating or upgrading
 - [ ] **Upgrade safety checks** — `pre-upgrade-check` if a WASM swap is planned; propose/commit understood; no assumption of automatic rollback
 - [ ] **Mainnet authorization controls** — admin/deployer keys as planned; deployer secret not reused as long-term admin; config.json not left on testnet values
-- [ ] **Monitoring / keeper / indexer readiness** — keeper funded and running; indexer `events.db` persistence planned; metrics/Grafana optional but RPC and pause alerts live ([`scripts/README.md`](../scripts/README.md))
+- [ ] **Monitoring / keeper / indexer readiness** — keeper funded and running with `CONTRACT_ID`, `KEEPER_PUBLIC_KEY`, and live `KEEPER_SECRET`; indexer `events.db` persistence planned; metrics/Grafana optional but RPC and pause alerts live ([`scripts/README.md`](../scripts/README.md))
 
 ---
 
