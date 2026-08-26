@@ -187,3 +187,9 @@ config/local.json
 # Backup files
 *.bak
 *.backup
+
+.agents/
+.claude/
+issue.md
+skills-lock.json
+
