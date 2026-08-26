@@ -12,6 +12,7 @@ Thank you for considering a contribution to FlowPay. This document covers everyt
 - [Ways to Contribute](#ways-to-contribute)
 - [Good First Issues](#good-first-issues)
 - [Development Setup](#development-setup)
+- [CI workflows](#ci-workflows)
 - [Branching & Workflow](#branching--workflow)
 - [Contract Contribution Guidelines](#contract-contribution-guidelines)
 - [Frontend Contribution Guidelines](#frontend-contribution-guidelines)
@@ -82,6 +83,25 @@ npm install
 cp .env.example .env.local   # then fill in VITE_CONTRACT_ID
 npm run dev
 ```
+
+### Scripts (keeper / indexer / ops)
+
+```bash
+cd scripts
+npm install
+cp .env.example .env   # Testnet placeholders only — never commit secrets
+npm run typecheck
+```
+
+See [`scripts/README.md`](scripts/README.md) and [`docs/ONBOARDING.md`](docs/ONBOARDING.md#25-backend--scripts-path-keeper--indexer).
+
+---
+
+## CI workflows
+
+GitHub Actions runs **Backend (Rust)** and **Frontend** workflows on every PR to `master`. Frontend Vitest and scripts typecheck are **not** enforced in CI today.
+
+Full truth table, line-by-line job steps, and copy-pastable recommended YAML: [`docs/development/ci-workflows.md`](docs/development/ci-workflows.md).
 
 ---
 
