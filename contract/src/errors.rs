@@ -70,7 +70,7 @@ pub enum ContractError {
     InvalidFeeBounds = 34,
     /// Returned when resume is called on a subscription whose grace period has elapsed.
     /// Cancel is still allowed; re-subscribe outside this flow to reactivate.
-    ResumeGraceLapsed = 36,
+    ResumeGraceLapsed = 40,
     /// Returned when a pending fee proposal violates the current fee bounds at commit time
     FeeOutOfBoundsAtCommit = 35,
 }
