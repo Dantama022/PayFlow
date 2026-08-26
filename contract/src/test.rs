@@ -5394,9 +5394,9 @@ fn test_non_admin_set_grace_period_panics() {
 // -------------------------------------------------------------
 
 
-/// resume on a grace-lapsed subscription must panic with ResumeGraceLapsed (#40).
+/// resume on a grace-lapsed subscription must panic with ResumeGraceLapsed (#100).
 #[test]
-#[should_panic(expected = "Error(Contract, #40)")]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn test_resume_after_grace_lapse_panics() {
     let (env, contract_id, token_addr, user, merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
