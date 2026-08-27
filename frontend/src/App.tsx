@@ -39,7 +39,10 @@ export default function App() {
 
       {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
       {publicKey && !networkMatch && (
-        <div className="card" style={{ background: "#3b1f1f", marginBottom: 16, textAlign: "center" }}>
+        <div
+          className="card"
+          style={{ background: "#3b1f1f", marginBottom: 16, textAlign: "center" }}
+        >
           <p style={{ color: "#f87171", fontSize: 13 }}>
             ⚠ Wallet is on <strong>{walletNetwork}</strong> — app expects a different network.
             Please switch your wallet network.

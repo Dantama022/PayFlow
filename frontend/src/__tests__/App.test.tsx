@@ -161,9 +161,7 @@ describe("App — wallet connect UX", () => {
 
     fireEvent.click(screen.getByText("Freighter").closest("button")!);
 
-    expect(mockConnect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "freighter" })
-    );
+    expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({ id: "freighter" }));
   });
 
   it("calls connect with xBull adapter when xBull is selected in modal", async () => {
@@ -176,9 +174,7 @@ describe("App — wallet connect UX", () => {
 
     fireEvent.click(screen.getByText("xBull").closest("button")!);
 
-    expect(mockConnect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "xbull" })
-    );
+    expect(mockConnect).toHaveBeenCalledWith(expect.objectContaining({ id: "xbull" }));
   });
 
   it("closes the modal when Cancel is clicked", async () => {
@@ -188,9 +184,7 @@ describe("App — wallet connect UX", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
-    await waitFor(() =>
-      expect(screen.queryByText("Freighter")).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.queryByText("Freighter")).not.toBeInTheDocument());
   });
 
   it("shows error message when connect fails", () => {
