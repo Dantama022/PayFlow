@@ -1916,6 +1916,7 @@ impl FlowPay {
     /// refreshes TTL, and emits `sub_transferred` and `subscription_transferred`.
     pub fn transfer_subscription(env: Env, user: Address, new_user: Address) {
         ensure_contract_not_paused(&env);
+        validation::require_valid_transfer_targets(&env, &user, &new_user);
         user.require_auth();
         new_user.require_auth();
 
@@ -2181,6 +2182,7 @@ fn subscribe_inner(
     referrer: Option<Address>,
 ) {
     bump_instance_ttl(env);
+    validation::require_valid_subscribe_addresses(env, &user, &merchant);
     user.require_auth();
 
     if whitelist::is_whitelist_enabled(env) && !whitelist::is_whitelisted(env, &merchant) {

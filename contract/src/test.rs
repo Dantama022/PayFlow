@@ -9813,3 +9813,152 @@ fn test_batch_charge_single_interesting_failure_emits_with_not_due_count() {
     assert_eq!(summary.charged, 0);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Issue 041 (#836): MerchantFeeRecipient clearing tests
+// ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_merchant_fee_recipient_cleared_on_remove_and_freeze() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let client = FlowPayClient::new(&env, &contract_id);
+    let recipient = Address::generate(&env);
+
+    client.add_merchant(&merchant);
+    client.set_merchant_fee_recipient(&merchant, &recipient);
+    assert_eq!(client.get_merchant_fee_recipient(&merchant), Some(recipient.clone()));
+
+    client.remove_merchant(&merchant);
+    assert_eq!(client.get_merchant_fee_recipient(&merchant), None);
+
+    client.add_merchant(&merchant);
+    client.set_merchant_fee_recipient(&merchant, &recipient);
+    assert_eq!(client.get_merchant_fee_recipient(&merchant), Some(recipient.clone()));
+
+    client.freeze_merchant(&merchant, &None);
+    assert_eq!(client.get_merchant_fee_recipient(&merchant), None);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Issue 033 (#828): Grace period TTL expiry tests
+// ─────────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "Error(Contract, #23)")]
+fn test_grace_period_commit_expired_proposal_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let client = FlowPayClient::new(&env, &contract_id);
+    client.propose_grace_period(&3600);
+
+    env.ledger().with_mut(|l| {
+        l.sequence_number += 20000;
+    });
+
+    client.commit_grace_period();
+}
+
+#[test]
+fn test_grace_period_propose_commit_happy_path() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let admin = Address::generate(&env);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    let client = FlowPayClient::new(&env, &contract_id);
+    client.propose_grace_period(&7200);
+
+    env.ledger().with_mut(|l| {
+        l.sequence_number += 100;
+    });
+
+    client.commit_grace_period();
+    assert_eq!(client.get_grace_period(), 7200);
+}
+
+// ─────────────────────────────────────────────────────────────
+// Issue 034 (#829): Self-transfer & contract-as-user hazards
+// ─────────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_transfer_subscription_self_transfer_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    client.transfer_subscription(&user, &user);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_transfer_subscription_to_contract_address_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    client.transfer_subscription(&user, &contract_id);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_subscribe_self_subscription_panics() {
+    let (env, contract_id, token_addr, user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &user,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #32)")]
+fn test_subscribe_contract_as_user_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &contract_id,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+}
+
+

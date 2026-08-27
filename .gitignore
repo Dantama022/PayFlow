@@ -189,7 +189,7 @@ config/local.json
 
 .agents/
 .claude/
-issue.md
+iissue.md
 skills-lock.json
 
 contract/target/

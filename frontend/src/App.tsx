@@ -1,14 +1,20 @@
 import React, { useState } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
+import { useRpcHealthContext } from "./context/RpcHealthContext";
 import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
+import RpcSettings from "./components/RpcSettings";
 
 export default function App() {
   const { publicKey, connect, signAndSubmit, error } = useWallet();
   const { announcement, announce } = useAccessibility();
+  const { healthy, circuitOpen } = useRpcHealthContext();
   const [tab, setTab] = useState<"subscribe" | "dashboard">("dashboard");
   const [refresh, setRefresh] = useState(0);
+  const [showRpcSettings, setShowRpcSettings] = useState(false);
+
+  const isRpcFailing = !healthy || circuitOpen;
 
   return (
     <div style={{ maxWidth: 480, margin: "60px auto", padding: "0 16px" }}>
@@ -24,6 +30,39 @@ export default function App() {
           Decentralized recurring payments on Stellar
         </p>
       </div>
+
+      {/* RPC Failure Banner */}
+      {isRpcFailing && (
+        <div
+          role="alert"
+          data-testid="rpc-failure-banner"
+          className="card"
+          style={{
+            background: "var(--color-danger-bg, #451a1a)",
+            color: "var(--color-danger-text, #f87171)",
+            border: "1px solid var(--color-danger, #ef4444)",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            padding: "12px 16px",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>⚠️ RPC endpoint is unreachable. Try a different endpoint.</span>
+          <button
+            className="btn-secondary"
+            onClick={() => setShowRpcSettings(true)}
+            data-testid="rpc-failure-banner-change-btn"
+            aria-label="Try a different RPC endpoint"
+            style={{ fontSize: 12, padding: "4px 8px", whiteSpace: "nowrap" }}
+          >
+            Try a different endpoint
+          </button>
+        </div>
+      )}
+
+      {showRpcSettings && <RpcSettings onClose={() => setShowRpcSettings(false)} />}
 
       {/* Wallet connect */}
       {!publicKey ? (
