@@ -1,5 +1,5 @@
 # Security
-
+<!-- updated -->
 > **Revision date:** 2026-08-27  
 > Auth matrix audited against `contract/src/lib.rs`, `admin.rs`, `migration.rs`, and `upgrade.rs`.  
 > Rows for `migrate` and `upgrade` corrected to admin‑only. `set_initial_admin` remains permissionless by design.
