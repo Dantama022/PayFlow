@@ -348,11 +348,9 @@ impl FlowPay {
                         match charge_exec::precheck_charge(&sub, now, grace_period) {
                             Err(skip) => skip,
                             Ok(()) => {
-                                let token_client =
-                                    soroban_sdk::token::Client::new(&env, &sub.token);
-                                let allowance = token_client
-                                    .allowance(&user, &env.current_contract_address());
-                                if allowance < sub.amount {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
                                     ChargeResult::AllowanceInsufficient
                                 } else {
                                     ChargeResult::Charged
@@ -363,11 +361,9 @@ impl FlowPay {
                         match charge_exec::precheck_charge(&sub, now, grace_period) {
                             Err(skip) => skip,
                             Ok(()) => {
-                                let token_client =
-                                    soroban_sdk::token::Client::new(&env, &sub.token);
-                                let allowance = token_client
-                                    .allowance(&user, &env.current_contract_address());
-                                if allowance < sub.amount {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
                                     ChargeResult::AllowanceInsufficient
                                 } else {
                                     ChargeResult::Charged
@@ -1590,9 +1586,8 @@ impl FlowPay {
             false
         };
 
-        let has_sufficient_allowance = soroban_sdk::token::Client::new(&env, &sub.token)
-            .allowance(&user, &env.current_contract_address())
-            >= sub.amount;
+        let has_sufficient_allowance =
+            validation::has_sufficient_allowance(&env, &user, &sub.token, sub.amount);
 
         let trial_active = trial::get_trial_end(env.clone(), user.clone()).is_some();
         let daily_limit_set = spending_limit::get_daily_limit(&env, &user).is_some();
