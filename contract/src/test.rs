@@ -8371,6 +8371,261 @@ fn test_daily_limit_day_start_boundary() {
 }
 
 // ─────────────────────────────────────────────
+// CONTRACT-821: simulate_pay_per_use dry-run helper
+// ─────────────────────────────────────────────
+
+/// The sibling dry-run of `pay_per_use` returns distinct outcomes for the
+/// inactive, paused, would-succeed, and daily-limit cases, while performing no
+/// state writes.
+#[test]
+fn test_simulate_pay_per_use_variants() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    // 1. Inactive when no subscription
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::Inactive
+    );
+
+    // Subscribe
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    // 2. WouldSucceed when active, no daily limit, allowance sufficient
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::WouldSucceed
+    );
+
+    // 3. DailyLimitExceeded when the limit would be exceeded
+    client.set_daily_limit(&user, &5_0000000);
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &6_0000000),
+        PayPerUseSimResult::DailyLimitExceeded
+    );
+
+    // 4. DailyLimitExceeded on cumulative spend: 3, then simulate another 3 (>5)
+    client.pay_per_use(&user, &3_0000000);
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &3_0000000),
+        PayPerUseSimResult::DailyLimitExceeded
+    );
+
+    // 5. SubscriptionPaused when paused
+    let before_spent = client.get_daily_spent(&user);
+    client.pause(&user);
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::SubscriptionPaused
+    );
+    client.resume(&user);
+
+    // 6. InsufficientAllowance when allowance revoked
+    let token = TokenClient::new(&env, &token_addr);
+    token.approve(&user, &contract_id, &0, &100);
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::InsufficientAllowance
+    );
+
+    // 7. ContractPaused
+    env.as_contract(&contract_id, || {
+        storage::set_contract_paused(&env, true);
+    });
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::ContractPaused
+    );
+
+    // No simulation wrote to daily spend tracking.
+    assert_eq!(client.get_daily_spent(&user), before_spent);
+}
+
+/// `simulate_pay_per_use` performs no state writes: daily spent, day start, and
+/// balance are unchanged regardless of the simulated outcome.
+#[test]
+fn test_simulate_pay_per_use_no_state_writes() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    client.set_daily_limit(&user, &5_0000000);
+
+    client.pay_per_use(&user, &2_0000000);
+
+    let spent_before = client.get_daily_spent(&user);
+    let day_start_before = client.get_day_start(&user);
+    let balance_before = TokenClient::new(&env, &token_addr)
+        .balance(&user);
+
+    // Would succeed
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &1_0000000),
+        PayPerUseSimResult::WouldSucceed
+    );
+    // Limit exceeded
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &5_0000000),
+        PayPerUseSimResult::DailyLimitExceeded
+    );
+
+    assert_eq!(client.get_daily_spent(&user), spent_before);
+    assert_eq!(client.get_day_start(&user), day_start_before);
+    assert_eq!(
+        TokenClient::new(&env, &token_addr).balance(&user),
+        balance_before
+    );
+}
+
+/// Simulating a spend at a day-window boundary reflects the fresh (reset) daily
+/// spent value after the window has elapsed, mirroring `pay_per_use`.
+#[test]
+fn test_simulate_pay_per_use_day_window_reset_boundary() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &100_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    client.set_daily_limit(&user, &50_0000000);
+
+    // Spend 10 today.
+    client.pay_per_use(&user, &10_0000000);
+    assert_eq!(client.get_daily_spent(&user), 10_0000000);
+
+    // Crossing the day boundary makes the reset daily spent visible to the
+    // dry-run: today a 45 spend would exceed (10 + 45 > 50)...
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &45_0000000),
+        PayPerUseSimResult::DailyLimitExceeded
+    );
+
+    // Manually extend the DailyLimit (and merchant-revenue) TTL so they survive
+    // the time skip below, while intentionally leaving DailySpent/DayStart to
+    // expire so the new window starts from a reset counter.
+    env.as_contract(&contract_id, || {
+        let key = DataKey::DailyLimit(user.clone());
+        env.storage().temporary().extend_ttl(&key, 35000, 35000);
+        env.storage().persistent().extend_ttl(
+            &DataKey::MerchantRevenue(merchant.clone()),
+            35000,
+            35000,
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::MerchantRevenueHistory(merchant.clone()),
+            35000,
+            35000,
+        );
+    });
+
+    // Advance past the day window (LEDGERS_PER_DAY + 1).
+    env.ledger().with_mut(|l| {
+        l.sequence_number += 17281;
+        l.timestamp += 17281 * 5;
+    });
+
+    // Renew the token allowance that expired with the ledger jump.
+    let token = TokenClient::new(&env, &token_addr);
+    token.approve(
+        &user,
+        &contract_id,
+        &10_000_0000000,
+        &(env.ledger().sequence() + 200),
+    );
+
+    // The new day's simulated spend is evaluated against a reset counter,
+    // so the same 45 amount now succeeds.
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &45_0000000),
+        PayPerUseSimResult::WouldSucceed
+    );
+}
+
+/// `simulate_pay_per_use_to` accounts for recipient validation (invalid
+/// contract self-reference and merchant whitelist) in addition to the shared
+/// pay-per-use checks.
+#[test]
+fn test_simulate_pay_per_use_to_recipient_validation() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    // Contract's own address is an invalid recipient.
+    assert_eq!(
+        client.simulate_pay_per_use_to(&user, &1_0000000, &contract_id),
+        PayPerUseSimResult::InvalidRecipient
+    );
+
+    // With whitelist enabled, a non-whitelisted recipient is rejected.
+    env.as_contract(&contract_id, || {
+        whitelist::set_whitelist_enabled(&env, true);
+    });
+    let random = Address::generate(&env);
+    assert_eq!(
+        client.simulate_pay_per_use_to(&user, &1_0000000, &random),
+        PayPerUseSimResult::MerchantNotWhitelisted
+    );
+
+    // A valid, whitelisted recipient would succeed.
+    env.as_contract(&contract_id, || {
+        whitelist::add_merchant(&env, &merchant);
+    });
+    assert_eq!(
+        client.simulate_pay_per_use_to(&user, &1_0000000, &merchant),
+        PayPerUseSimResult::WouldSucceed
+    );
+}
+
+/// `simulate_pay_per_use` rejects non-positive and over-cap amounts with the
+/// same outcomes the real call enforces.
+#[test]
+fn test_simulate_pay_per_use_amount_bounds() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    // No subscription yet, but amount bounds are checked before subscription.
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &0),
+        PayPerUseSimResult::AmountMustBePositive
+    );
+    assert_eq!(
+        client.simulate_pay_per_use(&user, &(MAX_AMOUNT + 1)),
+        PayPerUseSimResult::AmountExceedsMaximum
+    );
+}
+
+// ─────────────────────────────────────────────
 // New Feature Unit Tests (Issues #628, #638, #640, #641)
 // ─────────────────────────────────────────────
 
