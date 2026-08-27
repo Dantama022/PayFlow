@@ -3833,13 +3833,134 @@ fn test_grace_period_ttl_extension() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #1)")]
 fn test_double_initialize() {
     let (env, contract_id, token_addr, _user, _merchant) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     client.initialize(&token_addr, &admin);
     client.initialize(&token_addr, &admin);
+}
+
+// ─────────────────────────────────────────────
+// Issue #839 / Issue 044: deploy-facing initialize invariants
+// Relied on by scripts/deploy-pipeline.ts and scripts/testnet-setup.ts.
+// Signature must remain initialize(token, admin). Failures that scripts map
+// must be ContractError (AlreadyInitialized = 1), not a host string panic.
+// ─────────────────────────────────────────────
+
+/// Successful initialize persists both the default token and the admin.
+/// Deploy health checks require `token_configured` and `admin_configured`.
+#[test]
+fn test_initialize_deploy_invariant_persists_token_and_admin() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&token_addr, &admin);
+
+    assert_eq!(
+        client.get_token(),
+        Some(token_addr.clone()),
+        "initialize must persist the token readable via get_token"
+    );
+    assert_eq!(
+        client.get_admin(),
+        Some(admin.clone()),
+        "initialize must persist the admin readable via get_admin"
+    );
+
+    let report = client.contract_health_check();
+    assert!(report.token_configured);
+    assert!(report.admin_configured);
+}
+
+/// Storage read used by deploy scripts: get_admin returns the initialized admin.
+#[test]
+fn test_initialize_deploy_invariant_stored_admin() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    assert!(client.get_admin().is_none());
+    client.initialize(&token_addr, &admin);
+    assert_eq!(client.get_admin(), Some(admin));
+}
+
+/// Storage read used by deploy scripts: get_token returns the initialized token.
+#[test]
+fn test_initialize_deploy_invariant_stored_token() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    assert!(client.get_token().is_none());
+    client.initialize(&token_addr, &admin);
+    assert_eq!(client.get_token(), Some(token_addr));
+}
+
+/// A second initialize must return typed AlreadyInitialized (code 1), not a string panic.
+#[test]
+fn test_initialize_deploy_invariant_double_init_already_initialized() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&token_addr, &admin);
+
+    let result = client.try_initialize(&token_addr, &admin);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            crate::errors::ContractError::AlreadyInitialized as u32
+        ))),
+        "double initialize must map to ContractError::AlreadyInitialized"
+    );
+
+    // First initialize state is unchanged.
+    assert_eq!(client.get_token(), Some(token_addr));
+    assert_eq!(client.get_admin(), Some(admin));
+}
+
+/// Initialize without admin authorization must fail and must not persist token or admin.
+#[test]
+fn test_initialize_deploy_invariant_requires_admin_auth() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.set_auths(&[]);
+
+    let result = client.try_initialize(&token_addr, &admin);
+    assert!(result.is_err(), "initialize without admin auth must fail");
+    assert_ne!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            crate::errors::ContractError::AlreadyInitialized as u32
+        ))),
+        "missing admin auth is an authorization failure, not AlreadyInitialized"
+    );
+
+    assert!(
+        client.get_token().is_none(),
+        "failed initialize must not persist token"
+    );
+    assert!(
+        client.get_admin().is_none(),
+        "failed initialize must not persist admin"
+    );
+}
+
+/// Backward-compat: current initialize(token, admin) arity remains the deploy entrypoint.
+#[test]
+fn test_initialize_deploy_invariant_token_admin_signature() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    client.initialize(&token_addr, &admin);
+    assert_eq!(client.get_token(), Some(token_addr));
+    assert_eq!(client.get_admin(), Some(admin));
 }
 
 #[test]
