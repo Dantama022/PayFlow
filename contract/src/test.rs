@@ -8557,6 +8557,152 @@ fn test_extend_subscriber_index_ttl_non_admin_panics() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Issue #838: clear_subscriber_index_entry admin repair
+// ─────────────────────────────────────────────────────────────
+
+/// Simulate a stale index slot: the subscription is inactive but the
+/// append-only index was never tombstoned (the corruption this repair
+/// entrypoint is meant to fix).
+fn deactivate_subscription_leaving_index(env: &Env, contract_id: &Address, user: &Address) {
+    env.as_contract(contract_id, || {
+        let mut sub = storage::get_subscription(env, user).expect("subscription");
+        sub.active = false;
+        storage::set_subscription(env, user, &sub);
+    });
+}
+
+#[test]
+fn test_clear_subscriber_index_entry_authorized_repair_tombstones_stale_slot() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    assert_eq!(client.get_subscriber_at(&0u64), Some(user.clone()));
+
+    deactivate_subscription_leaving_index(&env, &contract_id, &user);
+    assert_eq!(
+        client.get_subscriber_at(&0u64),
+        Some(user.clone()),
+        "stale slot must still be visible before repair"
+    );
+
+    client.clear_subscriber_index_entry(&0u64);
+
+    assert_eq!(
+        client.get_subscriber_at(&0u64),
+        None,
+        "repaired slot must be tombstoned"
+    );
+    let page = client.get_subscriber_page(&0u64, &10u32);
+    assert_eq!(page.len(), 0);
+    assert_eq!(
+        client.get_subscriber_count(),
+        1,
+        "repair must not shrink the append-only index"
+    );
+}
+
+#[test]
+#[should_panic]
+fn test_clear_subscriber_index_entry_unauthorized_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    deactivate_subscription_leaving_index(&env, &contract_id, &user);
+
+    env.set_auths(&[]);
+    client.clear_subscriber_index_entry(&0u64);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #41)")]
+fn test_clear_subscriber_index_entry_refuses_active_subscriber() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    client.clear_subscriber_index_entry(&0u64);
+}
+
+#[test]
+fn test_clear_subscriber_index_entry_emits_audit_event() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &admin);
+    });
+
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &86400,
+        &token_addr,
+        &None,
+        &None,
+    );
+    deactivate_subscription_leaving_index(&env, &contract_id, &user);
+
+    client.clear_subscriber_index_entry(&0u64);
+
+    let events = env.events().all();
+    let (_, topics, data) = events.get(events.len() - 1).unwrap();
+    let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
+    let topic_user: Address = topics.get(1).unwrap().try_into_val(&env).unwrap();
+    let index: u64 = data.try_into_val(&env).unwrap();
+
+    assert_eq!(
+        topic_symbol,
+        Symbol::new(&env, "subscriber_index_cleared")
+    );
+    assert_eq!(topic_user, user);
+    assert_eq!(index, 0);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Issue #610: get_subscription_token tests
 // ─────────────────────────────────────────────────────────────
 

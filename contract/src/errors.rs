@@ -79,4 +79,7 @@ pub enum ContractError {
     RefundAmountMustBePositive = 39,
     /// Returned when the merchant cannot fund the requested refund
     InsufficientMerchantBalance = 40,
+    /// Returned when admin repair would tombstone an index slot whose
+    /// subscriber still has an active subscription
+    CannotClearActiveSubscriber = 41,
 }
