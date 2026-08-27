@@ -271,3 +271,6 @@ This means the contract **does not** currently tolerate per‑user allowance fai
 > Until the allowance‑tolerance issue is fixed (see #001), integrators **must** run `simulate_charge` or `get_batch_charge_estimate` on each candidate user and verify allowance/balance before calling `batch_charge`. The keeper script uses `check-allowances.ts` and `simulate` to guard against these panics.
 
 See [`docs/KEEPER.md`](./KEEPER.md) for operational precheck steps.
+
+
+For a complete breakdown of every `DataKey` variant, storage tier, TTL policy, and which functions read/write each key, see [Storage and TTL Management](architecture/storage_and_ttl.md).
