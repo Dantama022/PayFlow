@@ -8,7 +8,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger},
+    testutils::{Address as _, Auth as _, Events as _, Ledger, MockAuth, MockAuthInvoke},
     token::{Client as TokenClient, StellarAssetClient},
     Address, BytesN, Env, IntoVal, Symbol, TryFromVal, TryIntoVal, Vec,
 };
@@ -11113,4 +11113,692 @@ fn test_batch_charge_single_interesting_failure_emits_with_not_due_count() {
     assert_eq!(summary.no_subscription, 1);
     assert_eq!(summary.charged, 0);
 }
+
+// Issue #813: batch_charge stress tests
+//
+// These tests exercise batch_charge at the configured max batch size and one
+// above it.  The contract charges each user independently (Soroban budget is
+// per-invocation, not cumulative across batch entries), so per-call resource
+// usage scales linearly with batch size but stays well within the 200 M budget
+// Soroban allocates per transaction.  Estimated CPU per entry: ~50 000 budget
+// units (signature verify + storage read + transfer).  At 200 entries the total
+// is ~10 M  roughly 5 % of the budget.
+// 
+
+/// Batch-charge exactly the configured max batch size; all entries succeed.
+#[test]
+fn test_batch_charge_at_configured_max() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let batch_limit: u32 = 5;
+    client.set_max_batch_size(&batch_limit);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..batch_limit {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+
+    for i in 0..batch_limit {
+        let u = users.get(i).unwrap();
+        assert!(client.get_subscription(&u).unwrap().active);
+    }
+}
+
+/// Batch-charge one above the configured max panics with BatchTooLarge.
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_batch_charge_above_configured_max_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let batch_limit: u32 = 5;
+    client.set_max_batch_size(&batch_limit);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..=batch_limit {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+}
+
+/// Batch-charge the default max (50) without explicit configuration succeeds.
+/// Resources: ~50 entries x 50 000 budget units ~= 2.5 M total (~1.2 % of 200 M).
+#[test]
+fn test_batch_charge_at_default_max() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..50 {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+
+    for i in 0..50u32 {
+        let u = users.get(i).unwrap();
+        assert!(client.get_subscription(&u).unwrap().active);
+    }
+}
+
+/// Batch-charge one above the default max panics with BatchTooLarge.
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_batch_charge_over_default_max_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..51 {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+}
+
+// 
+// Issue #810: authorization-boundary tests
+//
+// Each admin entrypoint is tested in three states:
+//   (a) success with admin auth         called via the normal client method
+//       inside `mock_all_auths`
+//   (b) panic when no admin is set      called via try_* so the contract
+//       error is surfaced as an Err, not a hard panic
+//   (c) reject a non-admin caller       called via try_* with an un-mocked
+//       non-admin address, so the ledger rejects the auth
+// 
+
+// -- freeze_merchant ----------------------------------------------------------
+
+/// Admin can freeze a merchant (happy path).
+#[test]
+fn test_freeze_merchant_admin_success() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.freeze_merchant(&merchant, &None);
+
+    assert!(client.is_merchant_frozen(&merchant));
+}
+
+/// freeze_merchant panics when no admin has been set.
+#[test]
+fn test_freeze_merchant_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_freeze_merchant(&merchant, &None);
+    assert!(result.is_err());
+}
+
+/// freeze_merchant is rejected when called by a non-admin address.
+#[test]
+fn test_freeze_merchant_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "freeze_merchant",
+            args: (&merchant, &Option::<Address>::None).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_freeze_merchant(&merchant, &None);
+    assert!(result.is_err());
+}
+
+// -- propose_fee --------------------------------------------------------------
+
+/// Admin can propose a fee (happy path).
+#[test]
+fn test_propose_fee_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let collector = Address::generate(&env);
+    client.propose_fee(&collector, &100);
+
+    assert_eq!(client.get_fee(), None);
+}
+
+/// propose_fee panics when no admin has been set.
+#[test]
+fn test_propose_fee_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let collector = Address::generate(&env);
+    let result = client.try_propose_fee(&collector, &100);
+    assert!(result.is_err());
+}
+
+/// propose_fee is rejected when called by a non-admin address.
+#[test]
+fn test_propose_fee_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    let collector = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "propose_fee",
+            args: (&collector, &100u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_propose_fee(&collector, &100);
+    assert!(result.is_err());
+}
+
+// -- set_min_interval ---------------------------------------------------------
+
+/// Admin can set min_interval (happy path).
+#[test]
+fn test_set_min_interval_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.set_min_interval(&7200);
+    assert_eq!(client.get_min_interval(), 7200);
+}
+
+/// set_min_interval panics when no admin has been set.
+#[test]
+fn test_set_min_interval_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_set_min_interval(&7200);
+    assert!(result.is_err());
+}
+
+/// set_min_interval is rejected when called by a non-admin address.
+#[test]
+fn test_set_min_interval_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_min_interval",
+            args: (&7200u64,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_set_min_interval(&7200);
+    assert!(result.is_err());
+}
+
+// -- batch_cancel -------------------------------------------------------------
+
+/// Admin can batch-cancel subscriptions (happy path).
+#[test]
+fn test_batch_cancel_admin_success() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    users.push_back(u.clone());
+
+    client.batch_cancel(&users);
+
+    let sub = client.get_subscription(&u).unwrap();
+    assert!(!sub.active);
+}
+
+/// batch_cancel panics when no admin has been set.
+#[test]
+fn test_batch_cancel_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let users = soroban_sdk::Vec::new(&env);
+    let result = client.try_batch_cancel(&users);
+    assert!(result.is_err());
+}
+
+/// batch_cancel is rejected when called by a non-admin address.
+#[test]
+fn test_batch_cancel_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    let users = soroban_sdk::Vec::new(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "batch_cancel",
+            args: (&users,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_batch_cancel(&users);
+    assert!(result.is_err());
+}
+
+// -- whitelist_batch_add ------------------------------------------------------
+
+/// Admin can batch-add merchants to the whitelist (happy path).
+#[test]
+fn test_whitelist_batch_add_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let merchants = whitelist_admin_and_merchants(&env, &contract_id, 2);
+
+    let added = client.whitelist_batch_add(&merchants);
+    assert_eq!(added, 2);
+}
+
+/// whitelist_batch_add panics when no admin has been set.
+#[test]
+fn test_whitelist_batch_add_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let merchants = soroban_sdk::Vec::new(&env);
+    let result = client.try_whitelist_batch_add(&merchants);
+    assert!(result.is_err());
+}
+
+/// whitelist_batch_add is rejected when called by a non-admin address.
+#[test]
+fn test_whitelist_batch_add_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    let merchants = soroban_sdk::Vec::new(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "whitelist_batch_add",
+            args: (&merchants,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_whitelist_batch_add(&merchants);
+    assert!(result.is_err());
+}
+
+// -- batch_pause_subscriptions ------------------------------------------------
+
+/// Admin can batch-pause subscriptions (happy path).
+#[test]
+fn test_batch_pause_subscriptions_admin_success() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    users.push_back(u.clone());
+
+    client.batch_pause_subscriptions(&users);
+
+    let sub = client.get_subscription(&u).unwrap();
+    assert!(sub.paused);
+}
+
+/// batch_pause_subscriptions panics when no admin has been set.
+#[test]
+fn test_batch_pause_subscriptions_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let users = soroban_sdk::Vec::new(&env);
+    let result = client.try_batch_pause_subscriptions(&users);
+    assert!(result.is_err());
+}
+
+/// batch_pause_subscriptions is rejected when called by a non-admin address.
+#[test]
+fn test_batch_pause_subscriptions_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    let users = soroban_sdk::Vec::new(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "batch_pause_subscriptions",
+            args: (&users,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_batch_pause_subscriptions(&users);
+    assert!(result.is_err());
+}
+
+// -- clear_fee ----------------------------------------------------------------
+
+/// Admin can clear fee (happy path).
+#[test]
+fn test_clear_fee_admin_success() {
+    let (env, contract_id, _token_addr, user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+
+    let collector = Address::generate(&env);
+    client.propose_fee(&collector, &100);
+    client.commit_fee();
+    assert!(client.get_fee().is_some());
+
+    client.clear_fee();
+    assert_eq!(client.get_fee(), None);
+}
+
+/// clear_fee panics when no admin has been set.
+#[test]
+fn test_clear_fee_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_clear_fee();
+    assert!(result.is_err());
+}
+
+/// clear_fee is rejected when called by a non-admin address.
+#[test]
+fn test_clear_fee_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "clear_fee",
+            args: ().into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_clear_fee();
+    assert!(result.is_err());
+}
+
+// -- set_whitelist_enabled ----------------------------------------------------
+
+/// Admin can toggle whitelist on/off (happy path).
+#[test]
+fn test_set_whitelist_enabled_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.set_whitelist_enabled(&true);
+    assert!(client.is_whitelist_enabled());
+
+    client.set_whitelist_enabled(&false);
+    assert!(!client.is_whitelist_enabled());
+}
+
+/// set_whitelist_enabled panics when no admin has been set.
+#[test]
+fn test_set_whitelist_enabled_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_set_whitelist_enabled(&true);
+    assert!(result.is_err());
+}
+
+/// set_whitelist_enabled is rejected when called by a non-admin address.
+#[test]
+fn test_set_whitelist_enabled_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_whitelist_enabled",
+            args: (&true,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_set_whitelist_enabled(&true);
+    assert!(result.is_err());
+}
+
+// -- set_max_batch_size -------------------------------------------------------
+
+/// Admin can set max_batch_size (happy path).
+#[test]
+fn test_set_max_batch_size_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.set_max_batch_size(&100);
+    assert_eq!(client.get_max_batch_size(), 100);
+}
+
+/// set_max_batch_size panics when no admin has been set.
+#[test]
+fn test_set_max_batch_size_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_set_max_batch_size(&100);
+    assert!(result.is_err());
+}
+
+/// set_max_batch_size is rejected when called by a non-admin address.
+#[test]
+fn test_set_max_batch_size_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_max_batch_size",
+            args: (&100u32,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_set_max_batch_size(&100);
+    assert!(result.is_err());
+}
+
+// -- pause_contract -----------------------------------------------------------
+
+/// Admin can pause the contract (happy path).
+#[test]
+fn test_pause_contract_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.pause_contract();
+    assert!(client.is_contract_paused());
+}
+
+/// pause_contract panics when no admin has been set.
+#[test]
+fn test_pause_contract_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_pause_contract();
+    assert!(result.is_err());
+}
+
+/// pause_contract is rejected when called by a non-admin address.
+#[test]
+fn test_pause_contract_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "pause_contract",
+            args: ().into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_pause_contract();
+    assert!(result.is_err());
+    assert!(!client.is_contract_paused());
+}
+
+// -- migrate ------------------------------------------------------------------
+
+/// Admin can run storage migration (happy path).
+#[test]
+fn test_migrate_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let users = soroban_sdk::Vec::new(&env);
+    client.migrate(&users);
+    assert_eq!(client.get_schema_version(), 3);
+}
+
+/// migrate panics when no admin has been set.
+#[test]
+fn test_migrate_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let users = soroban_sdk::Vec::new(&env);
+    let result = client.try_migrate(&users);
+    assert!(result.is_err());
+}
+
+/// migrate is rejected when called by a non-admin address.
+#[test]
+fn test_migrate_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    let users = soroban_sdk::Vec::new(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "migrate",
+            args: (&users,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_migrate(&users);
+    assert!(result.is_err());
+}
+
+// -- set_global_volume_cap ----------------------------------------------------
+
+/// Admin can set the global volume cap (happy path).
+#[test]
+fn test_set_global_volume_cap_admin_success() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    client.set_global_volume_cap(&100_0000000);
+    assert_eq!(client.get_global_volume_cap(), 100_0000000);
+}
+
+/// set_global_volume_cap panics when no admin has been set.
+#[test]
+fn test_set_global_volume_cap_no_admin_panics() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let result = client.try_set_global_volume_cap(&100_0000000);
+    assert!(result.is_err());
+}
+
+/// set_global_volume_cap is rejected when called by a non-admin address.
+#[test]
+fn test_set_global_volume_cap_non_admin_rejected() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    install_admin(&env, &contract_id);
+
+    let non_admin = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &non_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "set_global_volume_cap",
+            args: (&100_0000000i128,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_set_global_volume_cap(&100_0000000);
+    assert!(result.is_err());
+}
+
 
