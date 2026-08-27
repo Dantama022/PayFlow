@@ -11135,6 +11135,7 @@ fn test_batch_charge_single_interesting_failure_emits_with_not_due_count() {
 fn test_batch_charge_at_configured_max() {
     let (env, contract_id, token_addr, _user, merchant) = setup();
     env.budget().reset_unlimited();
+    install_admin(&env, &contract_id);
     let client = FlowPayClient::new(&env, &contract_id);
 
     let batch_limit: u32 = 5;
@@ -11167,6 +11168,7 @@ fn test_batch_charge_at_configured_max() {
 fn test_batch_charge_above_configured_max_panics() {
     let (env, contract_id, token_addr, _user, merchant) = setup();
     env.budget().reset_unlimited();
+    install_admin(&env, &contract_id);
     let client = FlowPayClient::new(&env, &contract_id);
 
     let batch_limit: u32 = 5;
