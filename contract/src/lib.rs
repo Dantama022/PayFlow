@@ -256,6 +256,14 @@ pub struct FlowPay;
 
 #[contractimpl]
 impl FlowPay {
+    /// One-time deploy entrypoint: persists the default SAC token and the
+    /// contract admin. Admin must authorize this invoke.
+    ///
+    /// Deploy scripts (`scripts/deploy-pipeline.ts`, `scripts/testnet-setup.ts`)
+    /// depend on these invariants:
+    /// - arity is `initialize(token, admin)`
+    /// - a second call returns typed `ContractError::AlreadyInitialized` (code 1)
+    /// - success stores both token and admin, readable via `get_token` / `get_admin`
     pub fn initialize(env: Env, token: Address, admin: Address) {
         bump_instance_ttl(&env);
 
@@ -263,8 +271,10 @@ impl FlowPay {
             env.panic_with_error(ContractError::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Token, &token);
+        // Authorize and persist admin before writing Token so a missing/invalid
+        // admin signature cannot leave a token-only (partial) initialization.
         admin::initialize_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::Token, &token);
     }
 
     pub fn get_max_batch_size(env: Env) -> u32 {
@@ -338,11 +348,9 @@ impl FlowPay {
                         match charge_exec::precheck_charge(&sub, now, grace_period) {
                             Err(skip) => skip,
                             Ok(()) => {
-                                let token_client =
-                                    soroban_sdk::token::Client::new(&env, &sub.token);
-                                let allowance = token_client
-                                    .allowance(&user, &env.current_contract_address());
-                                if allowance < sub.amount {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
                                     ChargeResult::AllowanceInsufficient
                                 } else {
                                     ChargeResult::Charged
@@ -353,11 +361,9 @@ impl FlowPay {
                         match charge_exec::precheck_charge(&sub, now, grace_period) {
                             Err(skip) => skip,
                             Ok(()) => {
-                                let token_client =
-                                    soroban_sdk::token::Client::new(&env, &sub.token);
-                                let allowance = token_client
-                                    .allowance(&user, &env.current_contract_address());
-                                if allowance < sub.amount {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
                                     ChargeResult::AllowanceInsufficient
                                 } else {
                                     ChargeResult::Charged
@@ -806,6 +812,14 @@ impl FlowPay {
         // pause_until sets active=false while paused=true; those must still be resumable.
         if !sub.active && !sub.paused {
             env.panic_with_error(ContractError::SubscriptionInactive);
+        }
+
+        // Recovery rule: if the grace window has closed the subscription is no longer
+        // chargeable. Resume is rejected to prevent false recoverability signals.
+        // The only allowed exit is cancel(); re-subscribe to restore chargeability.
+        // See docs/SUBSCRIBER-LIFECYCLE.md.
+        if grace::is_grace_lapsed(&env, &sub) {
+            env.panic_with_error(ContractError::ResumeGraceLapsed);
         }
 
         sub.paused = false;
@@ -1423,8 +1437,14 @@ impl FlowPay {
 
     /// Returns a list of subscriber addresses that are currently due for charging.
     /// Reads from the `SubscriberIndex` starting from `offset` up to `offset + limit`.
-    /// Capped at 50 per call.
-    pub fn get_next_charge_batch(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+    /// Capped at 50 per call. Optionally filters out grace-lapsed subscriptions when
+    /// `exclude_lapsed` is `Some(true)` or `None`.
+    pub fn get_next_charge_batch(
+        env: Env,
+        offset: u64,
+        limit: u32,
+        exclude_lapsed: Option<bool>,
+    ) -> Vec<Address> {
         if limit > 50 {
             env.panic_with_error(ContractError::BatchTooLarge);
         }
@@ -1433,13 +1453,23 @@ impl FlowPay {
         if offset >= size || limit == 0 {
             return result;
         }
+        let exclude = exclude_lapsed.unwrap_or(true);
         let mut i = offset;
         let end = (offset + limit as u64).min(size);
         while i < end {
             if !subscription_count::is_subscriber_index_removed(&env, i) {
                 if let Some(addr) = env.storage().persistent().get::<DataKey, Address>(&DataKey::SubscriberIndex(i)) {
-                    if Self::is_charge_due(env.clone(), addr.clone()) {
-                        result.push_back(addr);
+                    if let Some(sub) = storage::get_subscription(&env, &addr) {
+                        if let Some(next) = charge_exec::compute_next_charge_at(&sub) {
+                            let now = env.ledger().timestamp();
+                            if now >= next {
+                                let grace = grace::get_grace_period(&env);
+                                let lapsed = grace > 0 && now > next + grace;
+                                if !exclude || !lapsed {
+                                    result.push_back(addr);
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1494,6 +1524,32 @@ impl FlowPay {
         events::publish_subscriber_index_ttl_extended(&env, count);
     }
 
+    /// Admin-only repair: tombstones a single stale subscriber index slot.
+    ///
+    /// Looks up the occupant of `index`, refuses if that subscriber currently
+    /// has an active subscription, then marks the slot removed so keepers skip
+    /// it. This does **not** garbage-collect the rest of the index.
+    ///
+    /// # Auth
+    ///
+    /// Requires authorization from the contract admin.
+    ///
+    /// # Errors
+    ///
+    /// Panics with `NoSubscriptionFound` if `index` is out of range, empty, or
+    /// already tombstoned. Panics with `CannotClearActiveSubscriber` if the
+    /// occupant still has an active subscription.
+    ///
+    /// # Side Effects
+    ///
+    /// Writes `SubscriberIndexRemoved(index)`, drops the reverse slot lookup
+    /// when it points at this index, and emits `subscriber_index_cleared`.
+    pub fn clear_subscriber_index_entry(env: Env, index: u64) {
+        admin::require_admin(&env);
+        let user = subscription_count::clear_subscriber_index_entry(&env, index);
+        events::publish_subscriber_index_cleared(&env, &user, index);
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Merchant revenue
     // ─────────────────────────────────────────────────────────────
@@ -1546,9 +1602,8 @@ impl FlowPay {
             false
         };
 
-        let has_sufficient_allowance = soroban_sdk::token::Client::new(&env, &sub.token)
-            .allowance(&user, &env.current_contract_address())
-            >= sub.amount;
+        let has_sufficient_allowance =
+            validation::has_sufficient_allowance(&env, &user, &sub.token, sub.amount);
 
         let trial_active = trial::get_trial_end(env.clone(), user.clone()).is_some();
         let daily_limit_set = spending_limit::get_daily_limit(&env, &user).is_some();

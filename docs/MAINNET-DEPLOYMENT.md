@@ -378,6 +378,8 @@ VITE_NETWORK_PASSPHRASE=Public Global Stellar Network ; September 2015
 
 ## Rollback / upgrade
 
+> **Operator playbooks:** Step-by-step timing budgets, verification reads, and abort paths for upgrade and fee rotation ceremonies are in [`operations/two_step_admin_playbooks.md`](operations/two_step_admin_playbooks.md).
+
 FlowPay does **not** auto-rollback. Production WASM replacement is the two-step admin flow in [`contract/src/upgrade.rs`](../contract/src/upgrade.rs):
 
 1. `propose_upgrade(new_wasm_hash)` — admin; stores `PendingUpgrade` in temporary storage (TTL 17,280 ledgers).
