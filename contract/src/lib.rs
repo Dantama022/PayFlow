@@ -641,6 +641,7 @@ impl FlowPay {
     /// # Panics
     /// - If `additional_seconds` is 0 (`IntervalMustBePositive`).
     /// - If the subscription is cancelled/inactive (`SubscriptionInactive`).
+    /// - If the subscription is paused (`SubscriptionPaused`).
     /// - If the subscription doesn't exist (`NoSubscriptionFound`).
     /// - If `last_charged + additional_seconds` overflows `u64` (`ArithmeticOverflow`).
     pub fn extend_trial(env: Env, user: Address, additional_seconds: u64) {
