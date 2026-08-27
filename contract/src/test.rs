@@ -11114,6 +11114,126 @@ fn test_batch_charge_single_interesting_failure_emits_with_not_due_count() {
     assert_eq!(summary.charged, 0);
 }
 
+// Issue #813: batch_charge stress / resource-envelope coverage
+//
+// These tests exercise `batch_charge` at the configured max batch size and one
+// above it, matching the resource envelope documented for `set_max_batch_size`.
+// Soroban's per-invocation budget is finite, so each test resets it to
+// unlimited up front (`env.budget().reset_unlimited()`, as the existing
+// `test_batch_charge_stress` does) so the setup + one `batch_charge` invocation
+// is measured without being throttled by the 200 M default budget.
+//
+// Approximate resource usage for a max-size batch at the default cap (50):
+//   - cost(n) ~= 50 x (storage read + fee + token transfer_from + events)
+//   - at a configured cap of 5 the per-entry cost is identical; only `n` varies.
+// The relevant ceiling enforced here is the batch-size check in `batch.rs`,
+// which fires *before* any charging, so exceeding the cap panics with
+// `ContractError::BatchTooLarge` (#20) rather than executing partial work.
+
+/// Batch-charge exactly the configured max batch size; all entries succeed.
+#[test]
+fn test_batch_charge_at_configured_max() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    env.budget().reset_unlimited();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let batch_limit: u32 = 5;
+    client.set_max_batch_size(&batch_limit);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..batch_limit {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    let results = client.batch_charge(&users);
+    assert_eq!(results.len(), batch_limit);
+    for r in results.into_iter() {
+        assert_eq!(r, crate::ChargeResult::Charged);
+    }
+    for i in 0..batch_limit {
+        let u = users.get(i).unwrap();
+        assert!(client.get_subscription(&u).unwrap().active);
+    }
+}
+
+/// Batch-charge one above the configured max panics with BatchTooLarge (#20).
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_batch_charge_above_configured_max_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    env.budget().reset_unlimited();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let batch_limit: u32 = 5;
+    client.set_max_batch_size(&batch_limit);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..=batch_limit {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+}
+
+/// Batch-charge the default max (50) without explicit configuration succeeds.
+#[test]
+fn test_batch_charge_at_default_max() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    env.budget().reset_unlimited();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..50 {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    let results = client.batch_charge(&users);
+    assert_eq!(results.len(), 50);
+    for r in results.into_iter() {
+        assert_eq!(r, crate::ChargeResult::Charged);
+    }
+    for i in 0..50u32 {
+        let u = users.get(i).unwrap();
+        assert!(client.get_subscription(&u).unwrap().active);
+    }
+}
+
+/// Batch-charge one above the default max panics with BatchTooLarge (#20).
+#[test]
+#[should_panic(expected = "Error(Contract, #20)")]
+fn test_batch_charge_over_default_max_panics() {
+    let (env, contract_id, token_addr, _user, merchant) = setup();
+    env.budget().reset_unlimited();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    let mut users = soroban_sdk::Vec::new(&env);
+    for _ in 0..51 {
+        let u = subscribe_funded_user(&env, &contract_id, &token_addr, &merchant, 86400);
+        users.push_back(u);
+    }
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86400 + 1;
+    });
+
+    client.batch_charge(&users);
+}
+
 // 
 // Issue #810: authorization-boundary tests
 //
