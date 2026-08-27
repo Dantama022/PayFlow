@@ -10730,6 +10730,24 @@ fn test_extend_trial_overflow_fails_with_typed_error() {
     assert_eq!(res, Err(Ok(soroban_sdk::Error::from_contract_error(36))));
 }
 
+/// Extending a paused subscription's trial must fail closed with the typed
+/// `SubscriptionPaused` (#17) error rather than advancing `last_charged` into
+/// a chargeable state.
+#[test]
+fn test_extend_trial_on_paused_subscription_panics() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    client.subscribe(&user, &merchant, &1000, &86400, &token_addr, &None, &None);
+    let before = client.get_subscription(&user).unwrap().last_charged;
+
+    client.pause(&user);
+
+    let res = client.try_extend_trial(&user, &86400);
+    assert_eq!(res, Err(Ok(soroban_sdk::Error::from_contract_error(17))));
+    assert_eq!(client.get_subscription(&user).unwrap().last_charged, before);
+}
+
 /// `amount * bps` must not wrap for amounts beyond the economic caps.
 #[test]
 #[should_panic(expected = "Error(Contract, #36)")]
