@@ -110,8 +110,12 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "function_name": "pause_contract",
-              "args": []
+              "function_name": "propose_upgrade",
+              "args": [
+                {
+                  "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+                }
+              ]
             }
           },
           "sub_invocations": []
@@ -122,7 +126,7 @@
   ],
   "ledger": {
     "protocol_version": 21,
-    "sequence_number": 0,
+    "sequence_number": 17281,
     "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
     "base_reserve": 0,
@@ -228,6 +232,45 @@
         {
           "contract_data": {
             "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+            "key": {
+              "vec": [
+                {
+                  "symbol": "PendingUpgrade"
+                }
+              ]
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+                "key": {
+                  "vec": [
+                    {
+                      "symbol": "PendingUpgrade"
+                    }
+                  ]
+                },
+                "durability": "temporary",
+                "val": {
+                  "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          17280
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
             "key": "ledger_key_contract_instance",
             "durability": "persistent"
           }
@@ -257,18 +300,6 @@
                         },
                         "val": {
                           "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4"
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "ContractPaused"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "bool": true
                         }
                       },
                       {
@@ -1092,10 +1123,12 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
               },
               {
-                "symbol": "pause_contract"
+                "symbol": "propose_upgrade"
               }
             ],
-            "data": "void"
+            "data": {
+              "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+            }
           }
         }
       },
@@ -1110,10 +1143,12 @@
           "v0": {
             "topics": [
               {
-                "symbol": "contract_paused"
+                "symbol": "upg_proposed"
               }
             ],
-            "data": "void"
+            "data": {
+              "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+            }
           }
         }
       },
@@ -1131,7 +1166,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "pause_contract"
+                "symbol": "propose_upgrade"
               }
             ],
             "data": "void"
@@ -1155,7 +1190,7 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
               },
               {
-                "symbol": "contract_health_check"
+                "symbol": "get_pending_upgrade"
               }
             ],
             "data": "void"
@@ -1176,93 +1211,10 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "contract_health_check"
+                "symbol": "get_pending_upgrade"
               }
             ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "active_subscription_count"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "admin_configured"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "contract_paused"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "fee_collector_set"
-                  },
-                  "val": {
-                    "bool": false
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "global_volume_utilization_pct"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "instance_ttl_ledgers"
-                  },
-                  "val": {
-                    "u32": 6307200
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "is_healthy"
-                  },
-                  "val": {
-                    "bool": false
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "pending_merchant_rev_count"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "schema_version"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "token_configured"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                }
-              ]
-            }
+            "data": "void"
           }
         }
       },

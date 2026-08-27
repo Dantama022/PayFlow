@@ -110,7 +110,26 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "function_name": "pause_contract",
+              "function_name": "propose_upgrade",
+              "args": [
+                {
+                  "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
+              "function_name": "cancel_pending_upgrade",
               "args": []
             }
           },
@@ -263,18 +282,6 @@
                         "key": {
                           "vec": [
                             {
-                              "symbol": "ContractPaused"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "bool": true
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
                               "symbol": "Token"
                             }
                           ]
@@ -360,6 +367,39 @@
                 "key": {
                   "ledger_key_nonce": {
                     "nonce": 2032731177588607455
+                  }
+                },
+                "durability": "temporary",
+                "val": "void"
+              }
+            },
+            "ext": "v0"
+          },
+          6311999
+        ]
+      ],
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+            "key": {
+              "ledger_key_nonce": {
+                "nonce": 4270020994084947596
+              }
+            },
+            "durability": "temporary"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4",
+                "key": {
+                  "ledger_key_nonce": {
+                    "nonce": 4270020994084947596
                   }
                 },
                 "durability": "temporary",
@@ -1092,10 +1132,12 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
               },
               {
-                "symbol": "pause_contract"
+                "symbol": "propose_upgrade"
               }
             ],
-            "data": "void"
+            "data": {
+              "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+            }
           }
         }
       },
@@ -1110,10 +1152,12 @@
           "v0": {
             "topics": [
               {
-                "symbol": "contract_paused"
+                "symbol": "upg_proposed"
               }
             ],
-            "data": "void"
+            "data": {
+              "bytes": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+            }
           }
         }
       },
@@ -1131,7 +1175,7 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "pause_contract"
+                "symbol": "propose_upgrade"
               }
             ],
             "data": "void"
@@ -1155,7 +1199,25 @@
                 "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
               },
               {
-                "symbol": "contract_health_check"
+                "symbol": "cancel_pending_upgrade"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000003",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "upg_cancelled"
               }
             ],
             "data": "void"
@@ -1176,93 +1238,55 @@
                 "symbol": "fn_return"
               },
               {
-                "symbol": "contract_health_check"
+                "symbol": "cancel_pending_upgrade"
               }
             ],
-            "data": {
-              "map": [
-                {
-                  "key": {
-                    "symbol": "active_subscription_count"
-                  },
-                  "val": {
-                    "u64": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "admin_configured"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "contract_paused"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "fee_collector_set"
-                  },
-                  "val": {
-                    "bool": false
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "global_volume_utilization_pct"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "instance_ttl_ledgers"
-                  },
-                  "val": {
-                    "u32": 6307200
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "is_healthy"
-                  },
-                  "val": {
-                    "bool": false
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "pending_merchant_rev_count"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "schema_version"
-                  },
-                  "val": {
-                    "u32": 0
-                  }
-                },
-                {
-                  "key": {
-                    "symbol": "token_configured"
-                  },
-                  "val": {
-                    "bool": true
-                  }
-                }
-              ]
-            }
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": null,
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_call"
+              },
+              {
+                "bytes": "0000000000000000000000000000000000000000000000000000000000000003"
+              },
+              {
+                "symbol": "get_pending_upgrade"
+              }
+            ],
+            "data": "void"
+          }
+        }
+      },
+      "failed_call": false
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000003",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "fn_return"
+              },
+              {
+                "symbol": "get_pending_upgrade"
+              }
+            ],
+            "data": "void"
           }
         }
       },

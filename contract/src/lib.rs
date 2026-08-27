@@ -1,6 +1,9 @@
 #![no_std]
 #![allow(clippy::too_many_arguments, clippy::inconsistent_digit_grouping)]
 
+#[cfg(test)]
+extern crate std;
+
 mod admin;
 mod batch;
 #[cfg(feature = "bench")]
@@ -176,6 +179,15 @@ pub struct SubscriptionHealth {
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq)]
+pub struct DailyLimitStatus {
+    pub limit: Option<i128>,
+    pub spent: i128,
+    pub day_start: Option<u64>,
+    pub remaining: Option<i128>,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HealthReport {
     pub is_healthy: bool,
     pub contract_paused: bool,
@@ -275,6 +287,15 @@ impl FlowPay {
         // admin signature cannot leave a token-only (partial) initialization.
         admin::initialize_admin(&env, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
+    }
+
+    /// Permissionlessly refreshes the shared instance storage TTL.
+    ///
+    /// Keeper liveness probes may call this entrypoint during read- or
+    /// simulation-heavy periods. It does not require auth, inspect pause
+    /// state, transfer funds, or mutate protocol state.
+    pub fn bump_instance_ttl(env: Env) {
+        bump_instance_ttl(&env);
     }
 
     pub fn get_max_batch_size(env: Env) -> u32 {
@@ -1732,6 +1753,13 @@ impl FlowPay {
     /// Returns the amount spent so far today via `pay_per_use()` for the caller.
     pub fn get_daily_spent(env: Env, user: Address) -> i128 {
         spending_limit::get_daily_spent(&env, &user)
+    }
+
+    /// Returns a consistent snapshot of a user's daily spending window.
+    /// `remaining` is `None` when no limit is configured and is clamped to
+    /// zero when spending has reached or exceeded the configured limit.
+    pub fn get_daily_limit_status(env: Env, user: Address) -> DailyLimitStatus {
+        spending_limit::get_daily_limit_status(&env, &user)
     }
 
     // ─────────────────────────────────────────────
