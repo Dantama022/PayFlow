@@ -808,6 +808,14 @@ impl FlowPay {
             env.panic_with_error(ContractError::SubscriptionInactive);
         }
 
+        // Recovery rule: if the grace window has closed the subscription is no longer
+        // chargeable. Resume is rejected to prevent false recoverability signals.
+        // The only allowed exit is cancel(); re-subscribe to restore chargeability.
+        // See docs/SUBSCRIBER-LIFECYCLE.md.
+        if grace::is_grace_lapsed(&env, &sub) {
+            env.panic_with_error(ContractError::ResumeGraceLapsed);
+        }
+
         sub.paused = false;
         sub.active = true;
 

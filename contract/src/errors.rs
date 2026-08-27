@@ -68,6 +68,9 @@ pub enum ContractError {
     InvalidVolumeCap = 33,
     /// Returned when configured fee bounds are inconsistent (min > max, or max > 10000)
     InvalidFeeBounds = 34,
+    /// Returned when resume is called on a subscription whose grace period has elapsed.
+    /// Cancel is still allowed; re-subscribe outside this flow to reactivate.
+    ResumeGraceLapsed = 100,
     /// Returned when a pending fee proposal violates the current fee bounds at commit time
     FeeOutOfBoundsAtCommit = 35,
     /// Returned when a checked arithmetic operation overflows (trial extension,
