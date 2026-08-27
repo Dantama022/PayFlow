@@ -13,6 +13,7 @@ export const CONTRACT_ERRORS: Record<string, string> = {
     "Your subscription data has been archived by the Stellar network. Use Restore to recover it.",
   "-32700":
     "Your subscription data has been archived by the Stellar network. Use Restore to recover it.",
+  "#24": "That address already has an active subscription.",
 };
 
 export function friendlyError(raw: string): string {

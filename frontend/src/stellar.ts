@@ -147,6 +147,10 @@ export async function buildResumeTx(user: string): Promise<string> {
   return buildTx(user, "resume", [addressVal(user)]);
 }
 
+export async function buildTransferSubscriptionTx(user: string, newUser: string): Promise<string> {
+  return buildTx(user, "transfer_subscription", [addressVal(user), addressVal(newUser)]);
+}
+
 export async function buildSetDailyLimitTx(user: string, amount: bigint): Promise<string> {
   return buildTx(user, "set_daily_limit", [
     addressVal(user),
