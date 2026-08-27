@@ -36,6 +36,7 @@ use soroban_sdk::{
 pub use batch::ChargeResult;
 pub use batch::CancelResult;
 pub use charge_exec::ChargeSimResult;
+pub use charge_exec::PayPerUseSimResult;
 
 // ─────────────────────────────────────────────────────────────
 // Storage keys
@@ -566,6 +567,26 @@ impl FlowPay {
         charge_exec::simulate_charge(&env, user)
     }
 
+    /// Dry-run simulation of a `pay_per_use` call. Returns a PayPerUseSimResult
+    /// variant indicating whether the pay-per-use would succeed or the reason it
+    /// would fail (contract paused, invalid/inactive/paused subscription, daily
+    /// limit exceeded, or insufficient allowance). Performs no state writes.
+    pub fn simulate_pay_per_use(env: Env, user: Address, amount: i128) -> PayPerUseSimResult {
+        charge_exec::simulate_pay_per_use(&env, user, amount, None)
+    }
+
+    /// Dry-run simulation of a `pay_per_use_to` call. Mirrors
+    /// `simulate_pay_per_use` but also validates the `recipient` (contract-address
+    /// self-reference and merchant whitelist). Performs no state writes.
+    pub fn simulate_pay_per_use_to(
+        env: Env,
+        user: Address,
+        amount: i128,
+        recipient: Address,
+    ) -> PayPerUseSimResult {
+        charge_exec::simulate_pay_per_use(&env, user, amount, Some(recipient))
+    }
+
     /// Executes an immediate pay-per-use charge for an active subscription.
     ///
     /// # Parameters
@@ -662,6 +683,7 @@ impl FlowPay {
     /// # Panics
     /// - If `additional_seconds` is 0 (`IntervalMustBePositive`).
     /// - If the subscription is cancelled/inactive (`SubscriptionInactive`).
+    /// - If the subscription is paused (`SubscriptionPaused`).
     /// - If the subscription doesn't exist (`NoSubscriptionFound`).
     /// - If `last_charged + additional_seconds` overflows `u64` (`ArithmeticOverflow`).
     pub fn extend_trial(env: Env, user: Address, additional_seconds: u64) {
