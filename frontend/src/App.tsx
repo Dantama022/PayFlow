@@ -3,6 +3,7 @@ import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
 import { useAdmin } from "./hooks/useAdmin";
+import { useContractPaused } from "./hooks/useContractPaused";
 import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
 import MerchantDashboard from "./components/MerchantDashboard";
@@ -10,6 +11,7 @@ import WalletSelectModal from "./components/WalletSelectModal";
 import WalletBar from "./components/WalletBar";
 import TabBar from "./components/TabBar";
 import AdminDashboard from "./pages/AdminDashboard";
+import ContractPauseBanner from "./components/ContractPauseBanner";
 import type { WalletAdapter } from "./services/wallets/WalletAdapter";
 
 type Tab = "dashboard" | "subscribe" | "merchant" | "admin";
@@ -20,6 +22,7 @@ export default function App() {
   const { announcement, announce } = useAccessibility();
   const { networkMatch, walletNetwork } = useNetworkCheck();
   const { isAdmin } = useAdmin(publicKey);
+  const { isPaused } = useContractPaused();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refresh, setRefresh] = useState(0);
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -48,6 +51,9 @@ export default function App() {
           Decentralized recurring payments on Stellar
         </p>
       </div>
+
+      {/* Contract pause banner — shown at root level so it's always visible */}
+      <ContractPauseBanner paused={isPaused} />
 
       {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
       {publicKey && !networkMatch && (
@@ -103,6 +109,7 @@ export default function App() {
                   setTab("dashboard");
                   setRefresh((r) => r + 1);
                 }}
+                isPaused={isPaused}
               />
             )}
             {tab === "dashboard" && (
@@ -111,6 +118,7 @@ export default function App() {
                 onSign={signAndSubmit}
                 refreshTrigger={refresh}
                 announce={announce}
+                isPaused={isPaused}
               />
             )}
             {tab === "merchant" && (
@@ -118,6 +126,7 @@ export default function App() {
                 merchantKey={publicKey}
                 onSign={signAndSubmit}
                 refreshTrigger={refresh}
+                isPaused={isPaused}
               />
             )}
             {tab === "admin" && isAdmin && (
