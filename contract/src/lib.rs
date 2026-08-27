@@ -256,6 +256,14 @@ pub struct FlowPay;
 
 #[contractimpl]
 impl FlowPay {
+    /// One-time deploy entrypoint: persists the default SAC token and the
+    /// contract admin. Admin must authorize this invoke.
+    ///
+    /// Deploy scripts (`scripts/deploy-pipeline.ts`, `scripts/testnet-setup.ts`)
+    /// depend on these invariants:
+    /// - arity is `initialize(token, admin)`
+    /// - a second call returns typed `ContractError::AlreadyInitialized` (code 1)
+    /// - success stores both token and admin, readable via `get_token` / `get_admin`
     pub fn initialize(env: Env, token: Address, admin: Address) {
         bump_instance_ttl(&env);
 
@@ -263,8 +271,10 @@ impl FlowPay {
             env.panic_with_error(ContractError::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Token, &token);
+        // Authorize and persist admin before writing Token so a missing/invalid
+        // admin signature cannot leave a token-only (partial) initialization.
         admin::initialize_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::Token, &token);
     }
 
     pub fn get_max_batch_size(env: Env) -> u32 {

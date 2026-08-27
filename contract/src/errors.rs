@@ -4,7 +4,9 @@ use soroban_sdk::contracterror;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum ContractError {
-    /// Returned when attempting to initialize a contract that has already been initialized
+    /// Returned when `initialize` is called after the default token is already stored.
+    /// Deploy scripts (`deploy-pipeline.ts`, `testnet-setup.ts`) map this typed
+    /// code rather than a host string panic.
     AlreadyInitialized = 1,
     /// Returned when a payment or subscription amount is not positive
     AmountMustBePositive = 2,
