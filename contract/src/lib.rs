@@ -1502,6 +1502,32 @@ impl FlowPay {
         events::publish_subscriber_index_ttl_extended(&env, count);
     }
 
+    /// Admin-only repair: tombstones a single stale subscriber index slot.
+    ///
+    /// Looks up the occupant of `index`, refuses if that subscriber currently
+    /// has an active subscription, then marks the slot removed so keepers skip
+    /// it. This does **not** garbage-collect the rest of the index.
+    ///
+    /// # Auth
+    ///
+    /// Requires authorization from the contract admin.
+    ///
+    /// # Errors
+    ///
+    /// Panics with `NoSubscriptionFound` if `index` is out of range, empty, or
+    /// already tombstoned. Panics with `CannotClearActiveSubscriber` if the
+    /// occupant still has an active subscription.
+    ///
+    /// # Side Effects
+    ///
+    /// Writes `SubscriberIndexRemoved(index)`, drops the reverse slot lookup
+    /// when it points at this index, and emits `subscriber_index_cleared`.
+    pub fn clear_subscriber_index_entry(env: Env, index: u64) {
+        admin::require_admin(&env);
+        let user = subscription_count::clear_subscriber_index_entry(&env, index);
+        events::publish_subscriber_index_cleared(&env, &user, index);
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Merchant revenue
     // ─────────────────────────────────────────────────────────────

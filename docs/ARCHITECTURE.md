@@ -192,6 +192,7 @@ Events are emitted from `events.rs` and kept separate from storage mutation so t
 | `upg_proposed`                                                  | WASM upgrade proposed (two-step)                              |
 | `migration_completed`                                           | Storage schema migration finished                             |
 | `subscriber_index_ttl_extended`                                 | Subscriber index TTL refreshed                                |
+| `subscriber_index_cleared`                                      | Admin repaired a stale subscriber index slot                  |
 
 Events are the main off-chain integration surface for analytics, indexers, and the keeper workflow.
 
