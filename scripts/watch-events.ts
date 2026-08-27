@@ -191,8 +191,6 @@ function printEvent(event: ParsedEvent): void {
   const merchant = event.merchant ? shortenAddress(event.merchant) : "N/A";
   const amount = event.amount ? `${stroopsToXlm(event.amount)} XLM` : "N/A";
 
-  console.log(
-  
   logger.info(
     `${colors.dim}${timestamp}${colors.reset} ` +
       `${color}${colors.bright}${event.type}${colors.reset} ` +

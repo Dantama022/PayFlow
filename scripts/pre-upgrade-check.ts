@@ -505,7 +505,7 @@ async function runChecks(): Promise<ReadinessReport> {
       "migrate",
       [emptyUsers],
       SKIP_KEY_CHECK ? undefined : ADMIN_SECRET || undefined
-async function main(): Promise<void> {
+    );
   if (!CONTRACT_ID) {
     logger.error("Error: CONTRACT_ID environment variable is required.");
     process.exit(1);

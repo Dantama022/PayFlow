@@ -18,15 +18,33 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { Contract, Networks, TransactionBuilder, BASE_FEE, nativeToScVal, Address, xdr } from "@stellar/stellar-sdk";
+import {
+  Contract,
+  Networks,
+  TransactionBuilder,
+  BASE_FEE,
+  nativeToScVal,
+  Address,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { Server } from "@stellar/stellar-sdk/rpc";
 
-const RPC_URL = process.env.RPC_URL || process.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org";
-const NETWORK_PASSPHRASE = process.env.NETWORK_PASSPHRASE || process.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
-const CONTRACT_ID = process.env.CONTRACT_ID || process.env.VITE_CONTRACT_ID || "";
-const WEBHOOK_URL = process.env.WEBHOOK_URL || process.env.ALERT_WEBHOOK_URL || "";
+const RPC_URL =
+  process.env.RPC_URL ||
+  process.env.VITE_RPC_URL ||
+  "https://soroban-testnet.stellar.org";
+const NETWORK_PASSPHRASE =
+  process.env.NETWORK_PASSPHRASE ||
+  process.env.VITE_NETWORK_PASSPHRASE ||
+  Networks.TESTNET;
+const CONTRACT_ID =
+  process.env.CONTRACT_ID || process.env.VITE_CONTRACT_ID || "";
+const WEBHOOK_URL =
+  process.env.WEBHOOK_URL || process.env.ALERT_WEBHOOK_URL || "";
 const THRESHOLD_PCT = Number(process.env.GRACE_ALERT_THRESHOLD_PCT ?? "25");
-const HEARTBEAT_PATH = process.env.KEEPER_HEARTBEAT_PATH || join(process.cwd(), "data", "keeper-heartbeat.json");
+const HEARTBEAT_PATH =
+  process.env.KEEPER_HEARTBEAT_PATH ||
+  join(process.cwd(), "data", "keeper-heartbeat.json");
 
 interface GraceAlert {
   subscriber: string;
@@ -60,7 +78,11 @@ async function getKeeperHeartbeat(): Promise<HeartbeatInfo> {
     const data = JSON.parse(raw);
     const lastRun = Number(data.last_run_timestamp ?? data.lastRunTimestamp);
     if (isNaN(lastRun) || lastRun <= 0) {
-      return { lastRunTimestamp: null, lastRunIso: null, isStaleOrMissing: true };
+      return {
+        lastRunTimestamp: null,
+        lastRunIso: null,
+        isStaleOrMissing: true,
+      };
     }
     const nowSec = Math.floor(Date.now() / 1000);
     // Heartbeat considered stale if keeper hasn't run in > 15 minutes (900s)
@@ -116,7 +138,9 @@ interface SubscriptionData {
   paused: boolean;
 }
 
-async function fetchActiveSubscriptions(server: Server): Promise<SubscriptionData[]> {
+async function fetchActiveSubscriptions(
+  server: Server,
+): Promise<SubscriptionData[]> {
   if (!CONTRACT_ID) return [];
   const response = await server.getEvents({
     filters: [{ type: "contract", contractIds: [CONTRACT_ID] }],
@@ -162,7 +186,10 @@ async function fetchActiveSubscriptions(server: Server): Promise<SubscriptionDat
   return Array.from(activeMap.values());
 }
 
-async function sendWebhookAlert(alerts: GraceAlert[], heartbeatInfo: HeartbeatInfo): Promise<void> {
+async function sendWebhookAlert(
+  alerts: GraceAlert[],
+  heartbeatInfo: HeartbeatInfo,
+): Promise<void> {
   const payload = {
     event: "grace_period_window_alert",
     timestamp: new Date().toISOString(),
@@ -176,12 +203,16 @@ async function sendWebhookAlert(alerts: GraceAlert[], heartbeatInfo: HeartbeatIn
   };
 
   console.log(`\n====================================================`);
-  console.log(`🚨 ALERT TRIGGERED: ${alerts.length} subscription(s) near grace window expiry!`);
+  console.log(
+    `🚨 ALERT TRIGGERED: ${alerts.length} subscription(s) near grace window expiry!`,
+  );
   console.log(JSON.stringify(payload, null, 2));
   console.log(`====================================================\n`);
 
   if (!WEBHOOK_URL) {
-    console.log(`[INFO] No WEBHOOK_URL configured. Alert output logged to stdout.`);
+    console.log(
+      `[INFO] No WEBHOOK_URL configured. Alert output logged to stdout.`,
+    );
     return;
   }
 
@@ -193,7 +224,10 @@ async function sendWebhookAlert(alerts: GraceAlert[], heartbeatInfo: HeartbeatIn
     });
     console.log(`Webhook POST response status: ${res.status}`);
   } catch (err) {
-    console.error(`Failed to send webhook alert:`, err instanceof Error ? err.message : err);
+    console.error(
+      `Failed to send webhook alert:`,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
@@ -201,7 +235,9 @@ async function main() {
   console.log(`====================================================`);
   console.log(`FlowPay Grace Period Window Monitor`);
   console.log(`RPC Endpoint: ${RPC_URL}`);
-  console.log(`Contract ID: ${CONTRACT_ID || "(Not configured - scanning mode)"}`);
+  console.log(
+    `Contract ID: ${CONTRACT_ID || "(Not configured - scanning mode)"}`,
+  );
   console.log(`Alert Threshold: < ${THRESHOLD_PCT}% remaining`);
   console.log(`====================================================\n`);
 
@@ -209,17 +245,23 @@ async function main() {
   const heartbeatInfo = await getKeeperHeartbeat();
 
   if (heartbeatInfo.isStaleOrMissing) {
-    console.warn(`⚠️ WARNING: Keeper heartbeat is missing or stale! Last run: ${heartbeatInfo.lastRunIso ?? "Never"}`);
+    console.warn(
+      `⚠️ WARNING: Keeper heartbeat is missing or stale! Last run: ${heartbeatInfo.lastRunIso ?? "Never"}`,
+    );
   }
 
   const gracePeriodSeconds = await fetchContractGracePeriod(server);
   if (gracePeriodSeconds === 0) {
-    console.log(`Contract grace period is 0 (disabled). No grace window checks required.`);
+    console.log(
+      `Contract grace period is 0 (disabled). No grace window checks required.`,
+    );
     process.exit(0);
   }
 
   const subscriptions = await fetchActiveSubscriptions(server);
-  console.log(`Found ${subscriptions.length} active subscription(s) to check...`);
+  console.log(
+    `Found ${subscriptions.length} active subscription(s) to check...`,
+  );
 
   const nowSec = Math.floor(Date.now() / 1000);
   const triggeredAlerts: GraceAlert[] = [];
@@ -236,9 +278,13 @@ async function main() {
     // now > intervalEnd AND now < graceWindowExpiry
     if (nowSec > intervalEnd && nowSec < graceWindowExpiry) {
       const timeRemainingSeconds = graceWindowExpiry - nowSec;
-      const pctRemaining = Number(((timeRemainingSeconds / gracePeriodSeconds) * 100).toFixed(2));
+      const pctRemaining = Number(
+        ((timeRemainingSeconds / gracePeriodSeconds) * 100).toFixed(2),
+      );
 
-      console.log(`  [IN GRACE WINDOW] Subscriber: ${sub.subscriber} | Time Left: ${timeRemainingSeconds}s (${pctRemaining}%)`);
+      console.log(
+        `  [IN GRACE WINDOW] Subscriber: ${sub.subscriber} | Time Left: ${timeRemainingSeconds}s (${pctRemaining}%)`,
+      );
 
       if (pctRemaining < THRESHOLD_PCT) {
         triggeredAlerts.push({
@@ -246,7 +292,9 @@ async function main() {
           merchant: sub.merchant,
           amount: sub.amount,
           graceWindowExpiryTimestamp: graceWindowExpiry,
-          graceWindowExpiryIso: new Date(graceWindowExpiry * 1000).toISOString(),
+          graceWindowExpiryIso: new Date(
+            graceWindowExpiry * 1000,
+          ).toISOString(),
           timeRemainingSeconds,
           percentageRemaining: pctRemaining,
           keeperLastRunTimestamp: heartbeatInfo.lastRunTimestamp,
@@ -259,11 +307,16 @@ async function main() {
   if (triggeredAlerts.length > 0 || heartbeatInfo.isStaleOrMissing) {
     await sendWebhookAlert(triggeredAlerts, heartbeatInfo);
   } else {
-    console.log(`All active subscriptions within healthy grace period bounds. No alerts triggered.`);
+    console.log(
+      `All active subscriptions within healthy grace period bounds. No alerts triggered.`,
+    );
   }
 }
 
 main().catch((err) => {
-  console.error("Grace period monitor failed:", err instanceof Error ? err.message : err);
+  console.error(
+    "Grace period monitor failed:",
+    err instanceof Error ? err.message : err,
+  );
   process.exit(1);
 });

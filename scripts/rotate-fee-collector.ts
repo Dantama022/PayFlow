@@ -82,12 +82,6 @@ async function main() {
   if (updatedFee.collector === newCollector) {
     console.log("✅ Success: Fee collector rotated correctly!");
     console.log(
-      `New Verification -> Collector: ${updatedFee.collector}, BPS: ${updatedFee.fee_bps}`,
-    );
-  } else {
-    console.error(
-      "❌ Error: Verification failed. Collector address does not match expected update.",
-    );
     logger.info("✅ Success: Fee collector rotated correctly!");
     logger.info(`New Verification -> Collector: ${updatedFee.collector}, BPS: ${updatedFee.fee_bps}`);
   } else {

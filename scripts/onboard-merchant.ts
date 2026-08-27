@@ -86,7 +86,7 @@ async function isMerchantFrozen(address: string): Promise<boolean> {
     server,
     "is_merchant_frozen",
     [addressToScVal(address)],
-    (value) => (value ? Boolean(value.b()) : false)
+    (value) => (value ? Boolean(value.b()) : false),
   );
 }
 
@@ -96,11 +96,15 @@ async function isMerchantWhitelisted(address: string): Promise<boolean> {
     server,
     "is_merchant_whitelisted",
     [addressToScVal(address)],
-    (value) => (value ? Boolean(value.b()) : false)
+    (value) => (value ? Boolean(value.b()) : false),
   );
 }
 
-async function notifyWebhook(address: string, txHash: string | null, status: MerchantOutcome["status"]): Promise<void> {
+async function notifyWebhook(
+  address: string,
+  txHash: string | null,
+  status: MerchantOutcome["status"],
+): Promise<void> {
   const url = process.env.MERCHANT_ONBOARD_WEBHOOK_URL;
   if (!url) {
     return;
@@ -122,7 +126,10 @@ async function notifyWebhook(address: string, txHash: string | null, status: Mer
   }
 }
 
-async function logMerchant(address: string, txHash: string | null): Promise<void> {
+async function logMerchant(
+  address: string,
+  txHash: string | null,
+): Promise<void> {
   await appendJsonLine(LOG_PATH, {
     address,
     onboarded_at: new Date().toISOString(),
@@ -162,7 +169,9 @@ async function onboardMerchant(address: string): Promise<MerchantOutcome> {
     };
   }
 
-  const tx = await invokeContract(config, server, "whitelist_batch_add", [vecAddressToScVal([address])]);
+  const tx = await invokeContract(config, server, "whitelist_batch_add", [
+    vecAddressToScVal([address]),
+  ]);
   const verified = await isMerchantWhitelisted(address);
   if (!verified) {
     throw new Error(`Whitelist verification failed after tx ${tx.hash}`);
@@ -181,7 +190,9 @@ async function onboardMerchant(address: string): Promise<MerchantOutcome> {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv);
-  const addresses = args.batchFile ? await loadBatchAddresses(args.batchFile) : [args.address as string];
+  const addresses = args.batchFile
+    ? await loadBatchAddresses(args.batchFile)
+    : [args.address as string];
   const outcomes: MerchantOutcome[] = [];
   let hadExecutionError = false;
 
@@ -197,9 +208,13 @@ async function main(): Promise<void> {
     }
   }
 
-  const failures = outcomes.filter((outcome) => outcome.status === "invalid" || outcome.status === "frozen");
+  const failures = outcomes.filter(
+    (outcome) => outcome.status === "invalid" || outcome.status === "frozen",
+  );
   if (failures.length > 0) {
-    console.error(`Completed with ${failures.length} blocked or invalid merchant(s).`);
+    console.error(
+      `Completed with ${failures.length} blocked or invalid merchant(s).`,
+    );
   }
   if (hadExecutionError) {
     process.exitCode = 1;
@@ -207,6 +222,9 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("onboard-merchant failed:", error instanceof Error ? error.message : error);
+  console.error(
+    "onboard-merchant failed:",
+    error instanceof Error ? error.message : error,
+  );
   process.exit(1);
 });

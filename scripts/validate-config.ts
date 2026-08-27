@@ -86,7 +86,9 @@ function loadEnv(projectRoot: string): Map<string, string> {
 
   logger.error("ERROR: No .env or .env.local file found in project root.");
   logger.error("  Create one from .env.example or set required variables:");
-  logger.error("    CONTRACT_ID, RPC_URL, SECRET_KEY, BATCH_SIZE, INTERVAL_SECONDS");
+  logger.error(
+    "    CONTRACT_ID, RPC_URL, SECRET_KEY, BATCH_SIZE, INTERVAL_SECONDS",
+  );
   process.exit(1);
 }
 

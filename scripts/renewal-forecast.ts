@@ -83,7 +83,10 @@ function stroopsToXlm(stroops: bigint): string {
  * Simulate a read-only contract call using a dummy source account.
  * Returns the decoded return value or null on error.
  */
-async function simulate(method: string, ...args: xdr.ScVal[]): Promise<xdr.ScVal | null> {
+async function simulate(
+  method: string,
+  ...args: xdr.ScVal[]
+): Promise<xdr.ScVal | null> {
   try {
     const contract = new Contract(CONTRACT_ID);
     const tx = new TransactionBuilder(new Account(SIM_SOURCE, "0"), {
@@ -98,7 +101,10 @@ async function simulate(method: string, ...args: xdr.ScVal[]): Promise<xdr.ScVal
     if ("error" in result) throw new Error(`${method}: ${result.error}`);
     return result.result?.retval ?? null;
   } catch (err) {
-    console.error(`[warn] simulate ${method} failed:`, err instanceof Error ? err.message : err);
+    console.error(
+      `[warn] simulate ${method} failed:`,
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 }
@@ -161,11 +167,14 @@ async function getSubscriberCount(): Promise<bigint> {
  * Fetch a page of subscriber addresses from the index.
  * Pruned (cancelled) slots are skipped by the contract.
  */
-async function getSubscriberPage(offset: bigint, limit: number): Promise<string[]> {
+async function getSubscriberPage(
+  offset: bigint,
+  limit: number,
+): Promise<string[]> {
   const retval = await simulate(
     "get_subscriber_page",
     xdr.ScVal.scvU64(new xdr.Uint64(offset)),
-    xdr.ScVal.scvU32(limit)
+    xdr.ScVal.scvU32(limit),
   );
   if (!retval || retval.switch().name === "scvVoid") return [];
 
@@ -248,21 +257,28 @@ function dateRange(start: string, end: string): string[] {
 // ── Output ────────────────────────────────────────────────────────────────────
 
 /** Build a ForecastResult from raw daily buckets */
-function buildResult(buckets: Map<string, DailyBucket>, startDate: string, endDate: string, activeCount: number): ForecastResult {
+function buildResult(
+  buckets: Map<string, DailyBucket>,
+  startDate: string,
+  endDate: string,
+  activeCount: number,
+): ForecastResult {
   const allDates = dateRange(startDate, endDate);
   const daily = allDates.map((date) => {
     const bucket = buckets.get(date);
     return {
       date,
       count: bucket?.count ?? 0,
-      totalVolumeXlm: bucket ? stroopsToXlm(bucket.totalVolumeStroops) : "0.0000000",
+      totalVolumeXlm: bucket
+        ? stroopsToXlm(bucket.totalVolumeStroops)
+        : "0.0000000",
     };
   });
 
   const totalCharges = daily.reduce((sum, d) => sum + d.count, 0);
   const totalVolume = daily.reduce(
     (sum, d) => sum + (buckets.get(d.date)?.totalVolumeStroops ?? 0n),
-    0n
+    0n,
   );
 
   return {
@@ -296,7 +312,7 @@ function printSummary(result: ForecastResult): void {
     `\nSummary: ${result.totalActiveSubscribers} active subscribers, ` +
       `${result.totalProjectedCharges} projected charges, ` +
       `${result.totalVolumeXlm} XLM over ${result.forecastDays} days ` +
-      `(${result.forecastStart} → ${result.forecastEnd})`
+      `(${result.forecastStart} → ${result.forecastEnd})`,
   );
 }
 
@@ -369,11 +385,15 @@ async function main(): Promise<void> {
   // Validate required env
   if (!CONTRACT_ID) {
     console.error("Error: CONTRACT_ID environment variable is required.");
-    console.error("Usage: CONTRACT_ID=your_contract_id tsx scripts/renewal-forecast.ts");
+    console.error(
+      "Usage: CONTRACT_ID=your_contract_id tsx scripts/renewal-forecast.ts",
+    );
     process.exit(1);
   }
 
-  console.error(`Forecasting ${days} days of renewals for contract ${CONTRACT_ID}...`);
+  console.error(
+    `Forecasting ${days} days of renewals for contract ${CONTRACT_ID}...`,
+  );
 
   // ── Step 1: Compute forecast window ──────────────────────────────────────
 
@@ -396,7 +416,7 @@ async function main(): Promise<void> {
 
     // Fetch subscription details in parallel for each address in the page
     const results = await Promise.all(
-      page.map((addr) => getSubscription(addr))
+      page.map((addr) => getSubscription(addr)),
     );
 
     for (const sub of results) {
@@ -409,7 +429,7 @@ async function main(): Promise<void> {
     // in the scan window but the window always covers `limit` index positions.
     offset += BigInt(PAGE_SIZE);
     console.error(
-      `  Scanned through ${offset < totalSubscribers ? offset : totalSubscribers}/${totalSubscribers} slots (${activeSubs.length} active so far)...`
+      `  Scanned through ${offset < totalSubscribers ? offset : totalSubscribers}/${totalSubscribers} slots (${activeSubs.length} active so far)...`,
     );
   }
 
@@ -417,7 +437,8 @@ async function main(): Promise<void> {
 
   if (activeSubs.length === 0) {
     const emptyResult = buildResult(new Map(), todayDate, forecastEndDate, 0);
-    const output = format === "json" ? formatJson(emptyResult) : formatCsv(emptyResult);
+    const output =
+      format === "json" ? formatJson(emptyResult) : formatCsv(emptyResult);
     if (outPath) {
       writeFileSync(outPath, output);
       console.error(`Wrote forecast to ${outPath}`);
@@ -464,7 +485,12 @@ async function main(): Promise<void> {
 
   // ── Step 4: Build and output ─────────────────────────────────────────────
 
-  const result = buildResult(buckets, todayDate, forecastEndDate, activeSubs.length);
+  const result = buildResult(
+    buckets,
+    todayDate,
+    forecastEndDate,
+    activeSubs.length,
+  );
   const output = format === "json" ? formatJson(result) : formatCsv(result);
 
   if (outPath) {

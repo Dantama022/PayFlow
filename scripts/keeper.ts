@@ -56,13 +56,21 @@ import {
 
 const RPC_URL = process.env.RPC_URL || "https://soroban-testnet.stellar.org";
 const CONTRACT_ID = process.env.CONTRACT_ID || "";
-const NETWORK_PASSPHRASE = (process.env.NETWORK_PASSPHRASE ?? Networks.TESTNET) as string;
+const NETWORK_PASSPHRASE = (process.env.NETWORK_PASSPHRASE ??
+  Networks.TESTNET) as string;
 const DRY_RUN = process.env.DRY_RUN === "true";
 const KEEPER_PUBLIC_KEY = process.env.KEEPER_PUBLIC_KEY || "";
 const KEEPER_SECRET = process.env.KEEPER_SECRET || "";
-const BATCH_SIZE = Math.min(Math.max(Number(process.env.BATCH_SIZE) || 50, 1), 50);
-const INTERVAL_SECONDS = Math.max(Number(process.env.INTERVAL_SECONDS) || 3600, 1);
-const REPORT_DIR = process.env.REPORT_DIR ?? path.join(__dirname, "data", "benchmarks");
+const BATCH_SIZE = Math.min(
+  Math.max(Number(process.env.BATCH_SIZE) || 50, 1),
+  50,
+);
+const INTERVAL_SECONDS = Math.max(
+  Number(process.env.INTERVAL_SECONDS) || 3600,
+  1,
+);
+const REPORT_DIR =
+  process.env.REPORT_DIR ?? path.join(__dirname, "data", "benchmarks");
 
 const server = new Server(RPC_URL);
 
@@ -72,13 +80,18 @@ function validateEnv(): void {
   const errors: string[] = [];
   if (!CONTRACT_ID) errors.push("CONTRACT_ID is required");
   if (!KEEPER_PUBLIC_KEY) errors.push("KEEPER_PUBLIC_KEY is required");
-  if (!DRY_RUN && !KEEPER_SECRET) errors.push("KEEPER_SECRET is required in live mode (or set DRY_RUN=true)");
+  if (!DRY_RUN && !KEEPER_SECRET)
+    errors.push("KEEPER_SECRET is required in live mode (or set DRY_RUN=true)");
 
   if (errors.length > 0) {
     console.error("Error: Missing required environment variables:");
     for (const err of errors) console.error(`  - ${err}`);
-    console.error("\nUsage: CONTRACT_ID=... KEEPER_PUBLIC_KEY=... tsx keeper.ts [--once]");
-    console.error("   or: CONTRACT_ID=... DRY_RUN=true KEEPER_PUBLIC_KEY=... tsx keeper.ts --once\n");
+    console.error(
+      "\nUsage: CONTRACT_ID=... KEEPER_PUBLIC_KEY=... tsx keeper.ts [--once]",
+    );
+    console.error(
+      "   or: CONTRACT_ID=... DRY_RUN=true KEEPER_PUBLIC_KEY=... tsx keeper.ts --once\n",
+    );
     process.exit(1);
   }
 }
@@ -164,7 +177,10 @@ function writeJsonFile(filePath: string, data: unknown): void {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   } catch (err) {
-    log(DRY_RUN, `WARNING: failed to write ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+    log(
+      DRY_RUN,
+      `WARNING: failed to write ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -248,7 +264,10 @@ async function getSubscriberCount(): Promise<number> {
   return Number(retval.u64());
 }
 
-async function getSubscriberPage(offset: number, limit: number): Promise<string[]> {
+async function getSubscriberPage(
+  offset: number,
+  limit: number,
+): Promise<string[]> {
   const contract = new Contract(CONTRACT_ID);
   const account = await server.getAccount(KEEPER_PUBLIC_KEY);
 
@@ -260,8 +279,8 @@ async function getSubscriberPage(offset: number, limit: number): Promise<string[
       contract.call(
         "get_subscriber_page",
         nativeToScVal(offset, { type: "u64" }),
-        nativeToScVal(limit, { type: "u32" })
-      )
+        nativeToScVal(limit, { type: "u32" }),
+      ),
     )
     .setTimeout(30)
     .build();
@@ -299,7 +318,8 @@ async function getSubscriptionAmount(user: string): Promise<bigint | null> {
     const result = await server.simulateTransaction(tx);
     if ("error" in result) return null;
 
-    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result
+      ?.retval;
     if (!retval || retval.switch().name === "scvVoid") return null;
 
     for (const entry of retval.map() ?? []) {
@@ -337,7 +357,8 @@ async function isContractPaused(): Promise<boolean> {
     const result = await server.simulateTransaction(tx);
     if ("error" in result) return false;
 
-    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result
+      ?.retval;
     return retval?.b() ?? false;
   } catch {
     return false;
@@ -434,8 +455,11 @@ async function submitBatchCharge(users: string[]): Promise<{
   const simResult = await server.simulateTransaction(tx);
   if ("error" in simResult) throw new Error(simResult.error);
 
-  const retval = (simResult as { result?: { retval?: xdr.ScVal } }).result?.retval;
-  const previewResults = retval ? decodeEnumVec(retval) : users.map(() => "Unknown");
+  const retval = (simResult as { result?: { retval?: xdr.ScVal } }).result
+    ?.retval;
+  const previewResults = retval
+    ? decodeEnumVec(retval)
+    : users.map(() => "Unknown");
 
   // Pre-fetch amounts for charging users (preview).
   // previewResults is index-aligned with users.
@@ -457,7 +481,9 @@ async function submitBatchCharge(users: string[]): Promise<{
   // Submit
   const sendResult = await server.sendTransaction(prepared);
   if (sendResult.status === "ERROR") {
-    const errObj = sendResult.errorResult as unknown as { code?: { toString(): string } };
+    const errObj = sendResult.errorResult as unknown as {
+      code?: { toString(): string };
+    };
     const code = errObj?.code?.toString() ?? "unknown";
     throw new Error(`Transaction failed (${code})`);
   }
@@ -483,7 +509,10 @@ async function submitBatchCharge(users: string[]): Promise<{
 
 // ── Page Processing ──────────────────────────────────────────────────────────
 
-async function processPageDryRun(users: string[], pageOffset: number): Promise<DryRunPageResult> {
+async function processPageDryRun(
+  users: string[],
+  pageOffset: number,
+): Promise<DryRunPageResult> {
   const result: DryRunPageResult = {
     checked: users.length,
     wouldCharge: 0,
@@ -507,7 +536,11 @@ async function processPageDryRun(users: string[], pageOffset: number): Promise<D
       const amt = amountIdx < amounts.length ? amounts[amountIdx] : 0n;
       result.wouldCharge++;
       result.totalVolume += amt;
-      result.candidates.push({ user, result: variant, amountStroops: amt.toString() });
+      result.candidates.push({
+        user,
+        result: variant,
+        amountStroops: amt.toString(),
+      });
       amountIdx++;
     } else {
       result.skipCounts[variant] = (result.skipCounts[variant] || 0) + 1;
@@ -518,7 +551,10 @@ async function processPageDryRun(users: string[], pageOffset: number): Promise<D
   return result;
 }
 
-async function processPageLive(users: string[], pageOffset: number): Promise<LivePageResult> {
+async function processPageLive(
+  users: string[],
+  pageOffset: number,
+): Promise<LivePageResult> {
   const result: LivePageResult = {
     charged: 0,
     totalVolume: 0n,
@@ -543,7 +579,11 @@ async function processPageLive(users: string[], pageOffset: number): Promise<Liv
         const amt = amountIdx < amounts.length ? amounts[amountIdx] : 0n;
         result.charged++;
         result.totalVolume += amt;
-        result.candidates.push({ user, result: variant, amountStroops: amt.toString() });
+        result.candidates.push({
+          user,
+          result: variant,
+          amountStroops: amt.toString(),
+        });
         amountIdx++;
       } else {
         result.skipCounts[variant] = (result.skipCounts[variant] || 0) + 1;
@@ -598,7 +638,7 @@ async function runCycle(): Promise<CycleReport> {
   if (optimized.batches.length === 0) {
     log(
       isDryRun,
-      `No ready subscribers (ready=${optimized.ready_count} deferred=${optimized.deferred_count})`
+      `No ready subscribers (ready=${optimized.ready_count} deferred=${optimized.deferred_count})`,
     );
     // Still write the live pointer so the "latest live" file is fresh.
     if (!isDryRun) {
@@ -609,7 +649,7 @@ async function runCycle(): Promise<CycleReport> {
 
   log(
     isDryRun,
-    `Optimizer selected ${optimized.ready_count} ready user(s) in ${optimized.batches.length} batch(es); deferred=${optimized.deferred_count}`
+    `Optimizer selected ${optimized.ready_count} ready user(s) in ${optimized.batches.length} batch(es); deferred=${optimized.deferred_count}`,
   );
 
   for (const batch of optimized.batches) {
@@ -629,7 +669,7 @@ async function runCycle(): Promise<CycleReport> {
 
       log(
         true,
-        `Batch ${offset}: checked=${pageResult.checked} wouldCharge=${pageResult.wouldCharge} volume=${stroopsToXlm(pageResult.totalVolume)} XLM`
+        `Batch ${offset}: checked=${pageResult.checked} wouldCharge=${pageResult.wouldCharge} volume=${stroopsToXlm(pageResult.totalVolume)} XLM`,
       );
       if (skipDetails) log(true, `  ${skipDetails}`);
     } else {
@@ -650,7 +690,7 @@ async function runCycle(): Promise<CycleReport> {
 
       log(
         false,
-        `Batch ${offset}: charged=${pageResult.charged} volume=${stroopsToXlm(pageResult.totalVolume)} XLM${pageResult.txHash ? ` tx=${pageResult.txHash}` : ""}`
+        `Batch ${offset}: charged=${pageResult.charged} volume=${stroopsToXlm(pageResult.totalVolume)} XLM${pageResult.txHash ? ` tx=${pageResult.txHash}` : ""}`,
       );
       if (skipDetails) log(false, `  ${skipDetails}`);
     }
@@ -688,7 +728,10 @@ async function runCycle(): Promise<CycleReport> {
  * just-completed live cycle. This is the "pointer" used by dry-run comparison.
  */
 function writeLatestLive(report: CycleReport): void {
-  const totalSkips = Object.values(report.totalSkips).reduce((a, b) => a + b, 0);
+  const totalSkips = Object.values(report.totalSkips).reduce(
+    (a, b) => a + b,
+    0,
+  );
   const record: LatestLiveRecord = {
     timestamp: new Date().toISOString(),
     contractId: CONTRACT_ID,
@@ -734,7 +777,9 @@ function writeDryRunReport(report: CycleReport): void {
     comparison = {
       checkedDelta: report.totalChecked - lastLive.totalChecked,
       chargedDelta: report.totalCharged - lastLive.totalCharged,
-      volumeDelta: (report.totalVolume - BigInt(lastLive.totalVolume)).toString(),
+      volumeDelta: (
+        report.totalVolume - BigInt(lastLive.totalVolume)
+      ).toString(),
       lastLiveAgeMs: ageMs,
       lastLiveAgeHuman: ageHuman,
     };
@@ -777,7 +822,10 @@ async function main(): Promise<void> {
   validateEnv();
 
   if (DRY_RUN) {
-    log(true, "Keeper started in DRY-RUN mode — no transactions will be submitted");
+    log(
+      true,
+      "Keeper started in DRY-RUN mode — no transactions will be submitted",
+    );
   } else {
     log(false, "Keeper started in LIVE mode");
   }
@@ -791,7 +839,10 @@ async function main(): Promise<void> {
   while (true) {
     const report = await runCycle();
     const nextRun = new Date(Date.now() + INTERVAL_SECONDS * 1000);
-    log(DRY_RUN, `Next cycle at ${nextRun.toISOString()} (in ${INTERVAL_SECONDS}s)`);
+    log(
+      DRY_RUN,
+      `Next cycle at ${nextRun.toISOString()} (in ${INTERVAL_SECONDS}s)`,
+    );
 
     if (report.errors.length > 0 && report.totalCharged === 0) {
       log(DRY_RUN, "All pages errored — will retry next cycle");
@@ -802,6 +853,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(`Fatal error: ${error instanceof Error ? error.message : error}`);
+  console.error(
+    `Fatal error: ${error instanceof Error ? error.message : error}`,
+  );
   process.exit(1);
 });

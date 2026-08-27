@@ -93,6 +93,7 @@ function parseArgs(argv: string[]): SetupArgs {
 interface Identity {
   role: "user" | "merchant";
   index: number;
+}
 const RPC_URL = process.env.RPC_URL || process.env.VITE_RPC_URL || "https://soroban-testnet.stellar.org";
 const FRIENDBOT_URL = process.env.FRIENDBOT_URL || "https://friendbot.stellar.org";
 const NETWORK_PASSPHRASE = process.env.NETWORK_PASSPHRASE || process.env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;

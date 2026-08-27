@@ -49,7 +49,9 @@ export default function App() {
             padding: "12px 16px",
           }}
         >
-          <span style={{ fontSize: 13 }}>⚠️ RPC endpoint is unreachable. Try a different endpoint.</span>
+          <span style={{ fontSize: 13 }}>
+            ⚠️ RPC endpoint is unreachable. Try a different endpoint.
+          </span>
           <button
             className="btn-secondary"
             onClick={() => setShowRpcSettings(true)}
