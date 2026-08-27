@@ -9754,10 +9754,10 @@ fn test_get_next_charge_batch_empty_and_bounds() {
     let (env, contract_id, _, _, _) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
-    let batch = client.get_next_charge_batch(&0, &10);
+    let batch = client.get_next_charge_batch(&0, &10, &None);
     assert_eq!(batch.len(), 0);
 
-    let batch_oob = client.get_next_charge_batch(&5, &10);
+    let batch_oob = client.get_next_charge_batch(&5, &10, &None);
     assert_eq!(batch_oob.len(), 0);
 }
 
@@ -9785,7 +9785,7 @@ fn test_get_next_charge_batch_filtering() {
 
     client.subscribe(&user_not_due, &merchant, &1_0000000, &interval, &token_addr, &None, &None);
 
-    let batch = client.get_next_charge_batch(&0, &10);
+    let batch = client.get_next_charge_batch(&0, &10, &None);
     assert_eq!(batch.len(), 1);
     assert_eq!(batch.get(0).unwrap(), user_due);
 }
@@ -9808,12 +9808,12 @@ fn test_get_next_charge_batch_pagination() {
         l.timestamp += interval + 1;
     });
 
-    let batch1 = client.get_next_charge_batch(&0, &2);
+    let batch1 = client.get_next_charge_batch(&0, &2, &None);
     assert_eq!(batch1.len(), 2);
     assert_eq!(batch1.get(0).unwrap(), user1);
     assert_eq!(batch1.get(1).unwrap(), user2);
 
-    let batch2 = client.get_next_charge_batch(&2, &2);
+    let batch2 = client.get_next_charge_batch(&2, &2, &None);
     assert_eq!(batch2.len(), 1);
     assert_eq!(batch2.get(0).unwrap(), user3);
 }
@@ -9824,7 +9824,58 @@ fn test_get_next_charge_batch_exceeds_limit_panics() {
     let (env, contract_id, _, _, _) = setup();
     let client = FlowPayClient::new(&env, &contract_id);
 
-    client.get_next_charge_batch(&0, &51);
+    client.get_next_charge_batch(&0, &51, &None);
+}
+
+#[test]
+fn test_get_next_charge_batch_exclude_lapsed() {
+    let (env, contract_id, token_addr, user, merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+
+    env.as_contract(&contract_id, || {
+        storage::set_admin(&env, &user);
+    });
+    let grace_period: u64 = 86400;
+    client.propose_grace_period(&grace_period);
+    client.commit_grace_period();
+
+    let interval: u64 = 86400;
+    client.subscribe(
+        &user,
+        &merchant,
+        &1_0000000,
+        &interval,
+        &token_addr,
+        &None,
+        &None,
+    );
+
+    // Advance ledger beyond interval, but WITHIN grace period
+    env.ledger().with_mut(|l| {
+        l.timestamp += interval + grace_period - 100;
+    });
+
+    // It should be returned because it's due and not lapsed
+    let batch = client.get_next_charge_batch(&0, &10, &Some(true));
+    assert_eq!(batch.len(), 1);
+    assert_eq!(batch.get(0).unwrap(), user);
+
+    // Advance ledger beyond interval + grace period
+    env.ledger().with_mut(|l| {
+        l.timestamp += 200; // past the grace period
+    });
+
+    // When exclude_lapsed is Some(true) or None, it should NOT be returned
+    let batch_exclude = client.get_next_charge_batch(&0, &10, &Some(true));
+    assert_eq!(batch_exclude.len(), 0);
+
+    let batch_default = client.get_next_charge_batch(&0, &10, &None);
+    assert_eq!(batch_default.len(), 0);
+
+    // When exclude_lapsed is Some(false), it should be returned
+    let batch_include = client.get_next_charge_batch(&0, &10, &Some(false));
+    assert_eq!(batch_include.len(), 1);
+    assert_eq!(batch_include.get(0).unwrap(), user);
 }
 
 #[test]

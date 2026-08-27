@@ -1437,8 +1437,14 @@ impl FlowPay {
 
     /// Returns a list of subscriber addresses that are currently due for charging.
     /// Reads from the `SubscriberIndex` starting from `offset` up to `offset + limit`.
-    /// Capped at 50 per call.
-    pub fn get_next_charge_batch(env: Env, offset: u64, limit: u32) -> Vec<Address> {
+    /// Capped at 50 per call. Optionally filters out grace-lapsed subscriptions when
+    /// `exclude_lapsed` is `Some(true)` or `None`.
+    pub fn get_next_charge_batch(
+        env: Env,
+        offset: u64,
+        limit: u32,
+        exclude_lapsed: Option<bool>,
+    ) -> Vec<Address> {
         if limit > 50 {
             env.panic_with_error(ContractError::BatchTooLarge);
         }
@@ -1447,13 +1453,23 @@ impl FlowPay {
         if offset >= size || limit == 0 {
             return result;
         }
+        let exclude = exclude_lapsed.unwrap_or(true);
         let mut i = offset;
         let end = (offset + limit as u64).min(size);
         while i < end {
             if !subscription_count::is_subscriber_index_removed(&env, i) {
                 if let Some(addr) = env.storage().persistent().get::<DataKey, Address>(&DataKey::SubscriberIndex(i)) {
-                    if Self::is_charge_due(env.clone(), addr.clone()) {
-                        result.push_back(addr);
+                    if let Some(sub) = storage::get_subscription(&env, &addr) {
+                        if let Some(next) = charge_exec::compute_next_charge_at(&sub) {
+                            let now = env.ledger().timestamp();
+                            if now >= next {
+                                let grace = grace::get_grace_period(&env);
+                                let lapsed = grace > 0 && now > next + grace;
+                                if !exclude || !lapsed {
+                                    result.push_back(addr);
+                                }
+                            }
+                        }
                     }
                 }
             }
