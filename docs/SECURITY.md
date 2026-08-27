@@ -90,7 +90,7 @@ The contract is built to fail closed. If a precondition is violated, the call pa
 | `pause_contract()` / `unpause_contract()` | admin                                                           |
 | `clear_merchant_revenue_history()`        | admin                                                           |
 | `reset_merchant_revenue()`                | admin                                                           |
-| `set_initial_admin()`                     | none                                                            |
+| `set_initial_admin()`                     | proposed admin address (must be signed by the admin being set)  |
 | `migrate()`                               | none                                                            |
 
 The current contract uses a mix of direct `require_auth()` checks and admin helper enforcement. That is intentional, but the auth path should be reviewed whenever a new public function is added.

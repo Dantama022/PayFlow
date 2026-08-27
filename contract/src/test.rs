@@ -9082,6 +9082,111 @@ fn test_subscription_health_daily_limit_set() {
     assert_eq!(health.daily_limit_set, true);
 }
 
+/// set_initial_admin with proper auth when Admin is unset succeeds and stores admin.
+#[test]
+fn test_set_initial_admin_success_once() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    assert!(client.get_admin().is_none());
+    client.set_initial_admin(&admin);
+    assert_eq!(client.get_admin(), Some(admin));
+}
+
+/// A second set_initial_admin call must return typed AdminAlreadySet (code 42),
+/// not a raw string panic, and must not change the stored admin.
+#[test]
+fn test_set_initial_admin_second_call_returns_typed_error() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin1 = Address::generate(&env);
+    let admin2 = Address::generate(&env);
+
+    client.set_initial_admin(&admin1);
+    assert_eq!(client.get_admin(), Some(admin1.clone()));
+
+    let result = client.try_set_initial_admin(&admin2);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            crate::errors::ContractError::AdminAlreadySet as u32
+        ))),
+        "second set_initial_admin must map to ContractError::AdminAlreadySet"
+    );
+
+    // First admin is unchanged — no partial overwrite.
+    assert_eq!(client.get_admin(), Some(admin1));
+}
+
+/// Calling set_initial_admin without the proposed admin's auth must fail with an
+/// authorization error (host-level, not a contract-level typed error) and must
+/// not write the admin slot.
+#[test]
+fn test_set_initial_admin_unauthenticated_fails() {
+    let (env, contract_id, _token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    env.set_auths(&[]);
+
+    let result = client.try_set_initial_admin(&admin);
+    assert!(
+        result.is_err(),
+        "set_initial_admin without proposed admin auth must fail"
+    );
+    assert_ne!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            crate::errors::ContractError::AdminAlreadySet as u32
+        ))),
+        "missing auth must be an authorization failure, not AdminAlreadySet"
+    );
+
+    assert!(
+        client.get_admin().is_none(),
+        "failed set_initial_admin must not persist admin"
+    );
+}
+
+/// Partial-init edge case: Token is already stored (e.g. from a separate
+/// deploy-step) but Admin slot is still empty. set_initial_admin must still
+/// require auth, succeed, and not be confused with initialize's state.
+#[test]
+fn test_set_initial_admin_token_present_admin_missing() {
+    let (env, contract_id, token_addr, _user, _merchant) = setup();
+    let client = FlowPayClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+
+    // Simulate partial init: write Token but not Admin.
+    env.as_contract(&contract_id, || {
+        storage::set_token(&env, &token_addr);
+    });
+
+    // Sanity: token stored, admin missing.
+    assert_eq!(client.get_token(), Some(token_addr.clone()));
+    assert!(client.get_admin().is_none());
+
+    // set_initial_admin must still require auth and succeed.
+    client.set_initial_admin(&admin);
+    assert_eq!(client.get_admin(), Some(admin.clone()));
+    // Token state untouched.
+    assert_eq!(client.get_token(), Some(token_addr));
+
+    // Subsequent call returns typed error (not a panic) even in partial-init
+    // post-success state.
+    let admin2 = Address::generate(&env);
+    let result = client.try_set_initial_admin(&admin2);
+    assert_eq!(
+        result,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            crate::errors::ContractError::AdminAlreadySet as u32
+        ))),
+        "post-success second call must return AdminAlreadySet in partial-init scenario"
+    );
+    assert_eq!(client.get_admin(), Some(admin));
+}
+
 // ─────────────────────────────────────────────────────────────
 // Tests for Issue #636: validate_interval hardening
 // ─────────────────────────────────────────────────────────────
