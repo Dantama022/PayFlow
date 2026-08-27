@@ -16,6 +16,7 @@ This document tracks the current public contract surface in [contract/src/lib.rs
   - [DataKey](#datakey)
 - [Functions](#functions)
   - [initialize](#initialize)
+  - [bump_instance_ttl](#bump_instance_ttl)
   - [subscribe](#subscribe)
   - [subscribe\_with\_metadata](#subscribe_with_metadata)
   - [charge](#charge)
