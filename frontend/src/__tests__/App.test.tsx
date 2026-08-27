@@ -8,6 +8,7 @@ vi.mock("../stellar", () => ({
   CONTRACT_ID: "",
   TOKEN_CONTRACT_ID: "",
   server: { sendTransaction: vi.fn() },
+  getContractAdmin: vi.fn().mockResolvedValue(null),
 }));
 
 // Mock WalletBar so it does not pull in heavy deps
@@ -26,6 +27,23 @@ vi.mock("../components/Dashboard", () => ({
 }));
 vi.mock("../components/SubscribeForm", () => ({
   default: () => <div data-testid="subscribe-form" />,
+}));
+vi.mock("../components/MerchantDashboard", () => ({
+  default: () => <div data-testid="merchant-dashboard" />,
+}));
+vi.mock("../pages/AdminDashboard", () => ({
+  default: () => <div data-testid="admin-dashboard" />,
+}));
+
+// Mock useAdmin so we can control admin state
+vi.mock("../hooks/useAdmin", () => ({
+  useAdmin: vi.fn(() => ({
+    isAdmin: false,
+    adminAddress: null,
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  })),
 }));
 
 // Mock useWallet so we control wallet state in all tests
@@ -86,6 +104,7 @@ vi.mock("../hooks/useWallet", () => {
 
 import App from "../App";
 import { useWallet, AVAILABLE_WALLETS } from "../hooks/useWallet";
+import { useAdmin } from "../hooks/useAdmin";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,12 +122,28 @@ function mockUseWallet(overrides: Partial<ReturnType<typeof useWallet>>) {
   });
 }
 
+function mockUseAdmin(isAdmin: boolean) {
+  (useAdmin as ReturnType<typeof vi.fn>).mockReturnValue({
+    isAdmin,
+    adminAddress: isAdmin ? "GABCDEF1234567890" : null,
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  });
+}
+
+const CONNECTED_STATE = {
+  publicKey: "GABCDEF1234567890",
+  activeAdapter: AVAILABLE_WALLETS[0],
+};
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 describe("App — wallet connect UX", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseWallet({});
+    mockUseAdmin(false);
   });
 
   it("renders without crashing", () => {
@@ -203,10 +238,7 @@ describe("App — wallet connect UX", () => {
   });
 
   it("shows WalletBar when connected", () => {
-    mockUseWallet({
-      publicKey: "GABCDEF1234567890",
-      activeAdapter: AVAILABLE_WALLETS[0],
-    });
+    mockUseWallet(CONNECTED_STATE);
     render(<App />);
     expect(screen.getByTestId("wallet-bar")).toBeInTheDocument();
     expect(screen.getByText("GABCDEF1234567890")).toBeInTheDocument();
@@ -214,11 +246,7 @@ describe("App — wallet connect UX", () => {
 
   it("calls disconnect when Disconnect is clicked in WalletBar", () => {
     const mockDisconnect = vi.fn();
-    mockUseWallet({
-      publicKey: "GABCDEF1234567890",
-      activeAdapter: AVAILABLE_WALLETS[0],
-      disconnect: mockDisconnect,
-    });
+    mockUseWallet({ ...CONNECTED_STATE, disconnect: mockDisconnect });
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
     expect(mockDisconnect).toHaveBeenCalledOnce();
@@ -227,5 +255,71 @@ describe("App — wallet connect UX", () => {
   it("does not render the wallet modal before Connect is clicked", () => {
     render(<App />);
     expect(screen.queryByRole("heading", { name: /connect wallet/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("App — tab shell navigation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseAdmin(false);
+  });
+
+  it("shows TabBar with Dashboard, Subscribe, Merchant tabs when connected (non-admin)", () => {
+    mockUseWallet(CONNECTED_STATE);
+    render(<App />);
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Subscribe" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Merchant" })).toBeInTheDocument();
+  });
+
+  it("does NOT show Admin tab for non-admin wallet", () => {
+    mockUseWallet(CONNECTED_STATE);
+    mockUseAdmin(false);
+    render(<App />);
+    expect(screen.queryByRole("tab", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("shows Admin tab when connected wallet is contract admin", () => {
+    mockUseWallet(CONNECTED_STATE);
+    mockUseAdmin(true);
+    render(<App />);
+    expect(screen.getByRole("tab", { name: "Admin" })).toBeInTheDocument();
+  });
+
+  it("renders Dashboard view by default when connected", () => {
+    mockUseWallet(CONNECTED_STATE);
+    render(<App />);
+    expect(screen.getByTestId("dashboard")).toBeInTheDocument();
+  });
+
+  it("switches to Subscribe view when Subscribe tab is clicked", () => {
+    mockUseWallet(CONNECTED_STATE);
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Subscribe" }));
+    expect(screen.getByTestId("subscribe-form")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard")).not.toBeInTheDocument();
+  });
+
+  it("switches to Merchant view when Merchant tab is clicked", () => {
+    mockUseWallet(CONNECTED_STATE);
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Merchant" }));
+    expect(screen.getByTestId("merchant-dashboard")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard")).not.toBeInTheDocument();
+  });
+
+  it("switches to Admin view when Admin tab is clicked by an admin", () => {
+    mockUseWallet(CONNECTED_STATE);
+    mockUseAdmin(true);
+    render(<App />);
+    fireEvent.click(screen.getByRole("tab", { name: "Admin" }));
+    expect(screen.getByTestId("admin-dashboard")).toBeInTheDocument();
+    expect(screen.queryByTestId("dashboard")).not.toBeInTheDocument();
+  });
+
+  it("does not render TabBar when disconnected", () => {
+    mockUseWallet({});
+    render(<App />);
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 });
