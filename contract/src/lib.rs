@@ -120,6 +120,8 @@ pub enum DataKey {
     // Feature: configurable min/max fee bps bounds
     MinFeeBps,
     MaxFeeBps,
+    // Feature: configurable whitelist batch size limit override
+    MaxWhitelistBatchSize,
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -128,7 +130,13 @@ pub enum DataKey {
 
 pub const SUBSCRIPTION_TTL_LEDGERS: u32 = 6307200; // ~1 year (assuming 5s blocks)
 pub const MAX_BATCH_PAUSE_SUBSCRIPTIONS: u32 = 25;
+/// Default cap for the admin whitelist batch entrypoints. Overridable at
+/// runtime via `set_max_whitelist_batch_size`, bounded by `MAX_BATCH_SIZE_CEILING`.
 pub const MAX_WHITELIST_BATCH_SIZE: u32 = 50;
+/// Hard ceiling shared by every admin-configurable batch limit. Configured
+/// limits are never allowed above this value, so batches stay bounded even if
+/// an admin key is compromised.
+pub const MAX_BATCH_SIZE_CEILING: u32 = 200;
 pub const GLOBAL_MAX_VOLUME_PER_HOUR: i128 = 50_000_000_000_000; // 50 trillion stroops
 pub const HOUR_IN_SECONDS: u64 = 3600;
 pub const MAX_AMOUNT: i128 = 100_000_000_000;
@@ -173,13 +181,16 @@ pub struct HealthReport {
     pub contract_paused: bool,
     pub token_configured: bool,
     pub admin_configured: bool,
+    /// Approximate instance TTL in ledgers. On-chain, this is a hardcoded
+    /// lower-bound estimate (100_000) because Soroban does not expose
+    /// `get_ttl()` outside test builds. Do not treat as precise.
     pub instance_ttl_ledgers: u32,
     pub active_subscription_count: u64,
     pub schema_version: u32,
     pub fee_collector_set: bool,
     pub global_volume_utilization_pct: u32,
+    /// Number of merchants with unwithdrawn revenue > 0.
     pub pending_merchant_rev_count: u32,
-    pub pending_merchant_revenue_count: u32,
 }
 
 #[contracttype]
@@ -245,6 +256,14 @@ pub struct FlowPay;
 
 #[contractimpl]
 impl FlowPay {
+    /// One-time deploy entrypoint: persists the default SAC token and the
+    /// contract admin. Admin must authorize this invoke.
+    ///
+    /// Deploy scripts (`scripts/deploy-pipeline.ts`, `scripts/testnet-setup.ts`)
+    /// depend on these invariants:
+    /// - arity is `initialize(token, admin)`
+    /// - a second call returns typed `ContractError::AlreadyInitialized` (code 1)
+    /// - success stores both token and admin, readable via `get_token` / `get_admin`
     pub fn initialize(env: Env, token: Address, admin: Address) {
         bump_instance_ttl(&env);
 
@@ -252,8 +271,10 @@ impl FlowPay {
             env.panic_with_error(ContractError::AlreadyInitialized);
         }
 
-        env.storage().instance().set(&DataKey::Token, &token);
+        // Authorize and persist admin before writing Token so a missing/invalid
+        // admin signature cannot leave a token-only (partial) initialization.
         admin::initialize_admin(&env, &admin);
+        env.storage().instance().set(&DataKey::Token, &token);
     }
 
     pub fn get_max_batch_size(env: Env) -> u32 {
@@ -262,10 +283,29 @@ impl FlowPay {
 
     pub fn set_max_batch_size(env: Env, size: u32) {
         admin::require_admin(&env);
-        if size > 200 {
+        if size > MAX_BATCH_SIZE_CEILING {
             env.panic_with_error(ContractError::InvalidBatchSize);
         }
         env.storage().instance().set(&DataKey::MaxBatchSize, &size);
+    }
+
+    /// Returns the batch cap applied to the admin whitelist batch entrypoints
+    /// (`whitelist_batch_add`, `whitelist_batch_remove`, `get_merchant_statuses`).
+    ///
+    /// This is a **separate** knob from `get_max_batch_size`, which bounds the
+    /// charge batches — see the design note in `whitelist.rs`. Defaults to
+    /// `MAX_WHITELIST_BATCH_SIZE` (50).
+    pub fn get_max_whitelist_batch_size(env: Env) -> u32 {
+        whitelist::get_max_whitelist_batch_size(&env)
+    }
+
+    /// Admin-only: overrides the whitelist batch cap.
+    ///
+    /// Panics with `InvalidBatchSize` when `size` is zero or exceeds
+    /// `MAX_BATCH_SIZE_CEILING` (200), so whitelist batches always stay bounded.
+    pub fn set_max_whitelist_batch_size(env: Env, size: u32) {
+        admin::require_admin(&env);
+        whitelist::set_max_whitelist_batch_size(&env, size);
     }
 
     pub fn get_contract_config(env: Env) -> ContractConfig {
@@ -302,11 +342,33 @@ impl FlowPay {
                 None => ChargeResult::NoSubscription,
                 Some(mut sub) => {
                     if sub.paused && charge_exec::try_auto_resume(&env, &user, &mut sub, now) {
-                        ChargeResult::Charged
+                        // Auto-resumed — fall through to allowance check below.
+                        // Re-run precheck on the now-active sub to be safe, then
+                        // mirror the same allowance check as the live batch path.
+                        match charge_exec::precheck_charge(&sub, now, grace_period) {
+                            Err(skip) => skip,
+                            Ok(()) => {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
+                                    ChargeResult::AllowanceInsufficient
+                                } else {
+                                    ChargeResult::Charged
+                                }
+                            }
+                        }
                     } else {
                         match charge_exec::precheck_charge(&sub, now, grace_period) {
                             Err(skip) => skip,
-                            Ok(()) => ChargeResult::Charged,
+                            Ok(()) => {
+                                if !validation::has_sufficient_allowance(
+                                    &env, &user, &sub.token, sub.amount,
+                                ) {
+                                    ChargeResult::AllowanceInsufficient
+                                } else {
+                                    ChargeResult::Charged
+                                }
+                            }
                         }
                     }
                 }
@@ -580,6 +642,7 @@ impl FlowPay {
     /// - If `additional_seconds` is 0 (`IntervalMustBePositive`).
     /// - If the subscription is cancelled/inactive (`SubscriptionInactive`).
     /// - If the subscription doesn't exist (`NoSubscriptionFound`).
+    /// - If `last_charged + additional_seconds` overflows `u64` (`ArithmeticOverflow`).
     pub fn extend_trial(env: Env, user: Address, additional_seconds: u64) {
         bump_instance_ttl(&env);
         user.require_auth();
@@ -587,6 +650,7 @@ impl FlowPay {
     }
 
     pub fn cancel_and_refund_prorated(env: Env, user: Address, merchant: Address) {
+        bump_instance_ttl(&env);
         user.require_auth();
         merchant.require_auth();
 
@@ -597,15 +661,37 @@ impl FlowPay {
             .get(&key)
             .unwrap_or_else(|| env.panic_with_error(ContractError::NoSubscriptionFound));
 
+        if !sub.active {
+            env.panic_with_error(ContractError::SubscriptionInactive);
+        }
+        if sub.paused {
+            env.panic_with_error(ContractError::SubscriptionPaused);
+        }
+        if sub.merchant != merchant {
+            env.panic_with_error(ContractError::RefundMerchantMismatch);
+        }
+
         let now = env.ledger().timestamp();
         let elapsed = now.saturating_sub(sub.last_charged);
         let remaining = sub.interval.saturating_sub(elapsed);
+        if sub.interval == 0 {
+            env.panic_with_error(ContractError::IntervalMustBePositive);
+        }
         let refund = (sub.amount * i128::from(remaining)) / i128::from(sub.interval);
 
-        if refund > 0 {
-            token::Client::new(&env, &sub.token).transfer(&merchant, &user, &refund);
+        if refund <= 0 {
+            env.panic_with_error(ContractError::RefundAmountMustBePositive);
         }
 
+        // Refunds are merchant-funded; no protocol escrow is used. Validate the
+        // source balance before the transfer so an underfunded merchant cannot
+        // reach an opaque SAC failure or a partial cancellation.
+        let token_client = token::Client::new(&env, &sub.token);
+        if token_client.balance(&merchant) < refund {
+            env.panic_with_error(ContractError::InsufficientMerchantBalance);
+        }
+
+        token_client.transfer(&merchant, &user, &refund);
         cancel_inner(&env, &user);
         events::publish_cancelled_with_refund(&env, &user, refund);
     }
@@ -728,6 +814,14 @@ impl FlowPay {
             env.panic_with_error(ContractError::SubscriptionInactive);
         }
 
+        // Recovery rule: if the grace window has closed the subscription is no longer
+        // chargeable. Resume is rejected to prevent false recoverability signals.
+        // The only allowed exit is cancel(); re-subscribe to restore chargeability.
+        // See docs/SUBSCRIBER-LIFECYCLE.md.
+        if grace::is_grace_lapsed(&env, &sub) {
+            env.panic_with_error(ContractError::ResumeGraceLapsed);
+        }
+
         sub.paused = false;
         sub.active = true;
 
@@ -839,6 +933,10 @@ impl FlowPay {
 
     pub fn propose_upgrade(env: Env, new_wasm_hash: BytesN<32>) {
         upgrade::propose_upgrade(&env, new_wasm_hash);
+    }
+
+    pub fn cancel_pending_upgrade(env: Env) {
+        upgrade::cancel_pending_upgrade(&env);
     }
 
     pub fn commit_upgrade(env: Env) {
@@ -1078,15 +1176,16 @@ impl FlowPay {
     }
 
     /// Adds multiple merchants to the whitelist in a single call.
-    /// Admin-only. Capped at 50 entries; duplicates are idempotent.
+    /// Admin-only. Duplicates are idempotent.
     /// Returns the number of entries processed.
+    ///
+    /// Capped at the configurable whitelist batch limit
+    /// (`get_max_whitelist_batch_size`, default 50); panics with
+    /// `BatchTooLarge` above it.
     pub fn whitelist_batch_add(env: Env, merchants: Vec<Address>) -> u32 {
         admin::require_admin(&env);
 
-        // TODO: use configurable limit (see CONTRACT-16) once merged
-        if merchants.len() > MAX_WHITELIST_BATCH_SIZE {
-            env.panic_with_error(ContractError::BatchTooLarge);
-        }
+        whitelist::require_batch_within_limit(&env, merchants.len());
 
         for merchant in merchants.iter() {
             whitelist::add_merchant(&env, &merchant);
@@ -1096,15 +1195,16 @@ impl FlowPay {
     }
 
     /// Removes multiple merchants from the whitelist in a single call.
-    /// Admin-only. Capped at 50 entries; removing a non-whitelisted merchant is a no-op.
+    /// Admin-only. Removing a non-whitelisted merchant is a no-op.
     /// Returns the number of entries processed.
+    ///
+    /// Capped at the configurable whitelist batch limit
+    /// (`get_max_whitelist_batch_size`, default 50); panics with
+    /// `BatchTooLarge` above it.
     pub fn whitelist_batch_remove(env: Env, merchants: Vec<Address>) -> u32 {
         admin::require_admin(&env);
 
-        // TODO: use configurable limit (see CONTRACT-16) once merged
-        if merchants.len() > MAX_WHITELIST_BATCH_SIZE {
-            env.panic_with_error(ContractError::BatchTooLarge);
-        }
+        whitelist::require_batch_within_limit(&env, merchants.len());
 
         for merchant in merchants.iter() {
             whitelist::remove_merchant(&env, &merchant);
@@ -1146,11 +1246,11 @@ impl FlowPay {
     }
 
     /// Returns the whitelist and freeze status for a batch of merchant addresses.
-    /// Capped at MAX_WHITELIST_BATCH_SIZE (50) per call.
+    /// Capped at the configurable whitelist batch limit
+    /// (`get_max_whitelist_batch_size`, default 50) so the read path and the
+    /// admin write paths share one number.
     pub fn get_merchant_statuses(env: Env, merchants: Vec<Address>) -> Vec<(Address, bool, bool)> {
-        if merchants.len() > MAX_WHITELIST_BATCH_SIZE {
-            env.panic_with_error(ContractError::BatchTooLarge);
-        }
+        whitelist::require_batch_within_limit(&env, merchants.len());
         let mut result = Vec::new(&env);
         for merchant in merchants.iter() {
             let whitelisted = whitelist::is_whitelisted(&env, &merchant);
@@ -1408,6 +1508,32 @@ impl FlowPay {
         events::publish_subscriber_index_ttl_extended(&env, count);
     }
 
+    /// Admin-only repair: tombstones a single stale subscriber index slot.
+    ///
+    /// Looks up the occupant of `index`, refuses if that subscriber currently
+    /// has an active subscription, then marks the slot removed so keepers skip
+    /// it. This does **not** garbage-collect the rest of the index.
+    ///
+    /// # Auth
+    ///
+    /// Requires authorization from the contract admin.
+    ///
+    /// # Errors
+    ///
+    /// Panics with `NoSubscriptionFound` if `index` is out of range, empty, or
+    /// already tombstoned. Panics with `CannotClearActiveSubscriber` if the
+    /// occupant still has an active subscription.
+    ///
+    /// # Side Effects
+    ///
+    /// Writes `SubscriberIndexRemoved(index)`, drops the reverse slot lookup
+    /// when it points at this index, and emits `subscriber_index_cleared`.
+    pub fn clear_subscriber_index_entry(env: Env, index: u64) {
+        admin::require_admin(&env);
+        let user = subscription_count::clear_subscriber_index_entry(&env, index);
+        events::publish_subscriber_index_cleared(&env, &user, index);
+    }
+
     // ─────────────────────────────────────────────────────────────
     // Merchant revenue
     // ─────────────────────────────────────────────────────────────
@@ -1460,9 +1586,8 @@ impl FlowPay {
             false
         };
 
-        let has_sufficient_allowance = soroban_sdk::token::Client::new(&env, &sub.token)
-            .allowance(&user, &env.current_contract_address())
-            >= sub.amount;
+        let has_sufficient_allowance =
+            validation::has_sufficient_allowance(&env, &user, &sub.token, sub.amount);
 
         let trial_active = trial::get_trial_end(env.clone(), user.clone()).is_some();
         let daily_limit_set = spending_limit::get_daily_limit(&env, &user).is_some();
@@ -1755,12 +1880,10 @@ impl FlowPay {
 
         let total_merchants = merchant_stats::get_merchant_index_size(&env);
         let mut pending_merchant_rev_count = 0;
-        let mut pending_merchant_revenue_count = 0;
         for i in 0..total_merchants {
             if let Some(merchant) = env.storage().persistent().get(&DataKey::MerchantIndex(i)) {
                 if merchant_stats::get_merchant_revenue(&env, &merchant) > 0 {
                     pending_merchant_rev_count += 1;
-                    pending_merchant_revenue_count += 1;
                 }
             }
         }
@@ -1782,7 +1905,6 @@ impl FlowPay {
             fee_collector_set,
             global_volume_utilization_pct,
             pending_merchant_rev_count,
-            pending_merchant_revenue_count,
         }
     }
 
@@ -1862,6 +1984,7 @@ impl FlowPay {
         env.storage().persistent().set(&new_key, &sub);
         env.storage().persistent().remove(&old_key);
 
+        subscription_count::transfer_subscriber_index(&env, &user, &new_user);
         extend_subscription_ttl(&env, &new_user);
 
         events::publish_subscription_transferred(&env, &user, &new_user);
@@ -2180,15 +2303,26 @@ pub(crate) fn check_and_update_global_volume(env: &Env, amount: i128) {
             accumulated_volume: 0,
         });
 
-    if now >= window.current_window_start + HOUR_IN_SECONDS {
+    // Checked: a window start near u64::MAX must not wrap the rollover test
+    // into an accidental (or permanently suppressed) window reset.
+    let window_end = window
+        .current_window_start
+        .checked_add(HOUR_IN_SECONDS)
+        .unwrap_or_else(|| env.panic_with_error(ContractError::ArithmeticOverflow));
+
+    if now >= window_end {
         window.current_window_start = now;
         window.accumulated_volume = 0;
     }
 
+    // Overflow and cap breach are distinct failure modes: an accumulator that
+    // cannot represent the sum is a typed `ArithmeticOverflow`, not a policy
+    // rejection, so clients can tell "the protocol is at its hourly cap" from
+    // "this amount is not representable".
     let new_volume = window
         .accumulated_volume
         .checked_add(amount)
-        .unwrap_or_else(|| env.panic_with_error(ContractError::GlobalVolumeExceeded));
+        .unwrap_or_else(|| env.panic_with_error(ContractError::ArithmeticOverflow));
 
     if new_volume > GLOBAL_MAX_VOLUME_PER_HOUR {
         env.panic_with_error(ContractError::GlobalVolumeExceeded);
