@@ -640,6 +640,320 @@ fn test_pay_per_use_allowance_below_gross_fails_closed() {
     assert_eq!(client.get_total_protocol_fees(), 0);
 }
 
+// ─────────────────────────────────────────────
+// Issue #837 / Issue 042: shared allowance-requirement helper
+// ─────────────────────────────────────────────
+
+struct AllowanceReqCase {
+    allowance: i128,
+    gross: i128,
+    fee_bps: u32,
+    expected: bool,
+    label: &'static str,
+}
+
+/// Table-driven unit tests for the shared allowance helper: zero, exact, and
+/// insufficient allowance, plus fee-off vs fee-on gross (never net-only).
+#[test]
+fn test_allowance_covers_gross_table() {
+    let gross: i128 = 10_000;
+    let fee_on_bps: u32 = 500; // 5%
+    let fee_on_net: i128 = gross - (gross * fee_on_bps as i128 / 10_000); // 9_500
+
+    let cases = [
+        AllowanceReqCase {
+            allowance: 0,
+            gross,
+            fee_bps: 0,
+            expected: false,
+            label: "zero allowance, fee_bps = 0",
+        },
+        AllowanceReqCase {
+            allowance: 0,
+            gross,
+            fee_bps: fee_on_bps,
+            expected: false,
+            label: "zero allowance, fee_bps > 0",
+        },
+        AllowanceReqCase {
+            allowance: gross,
+            gross,
+            fee_bps: 0,
+            expected: true,
+            label: "exact allowance, fee_bps = 0",
+        },
+        AllowanceReqCase {
+            allowance: gross,
+            gross,
+            fee_bps: fee_on_bps,
+            expected: true,
+            label: "exact gross allowance, fee_bps > 0",
+        },
+        AllowanceReqCase {
+            allowance: gross - 1,
+            gross,
+            fee_bps: 0,
+            expected: false,
+            label: "insufficient (one stroop short), fee_bps = 0",
+        },
+        AllowanceReqCase {
+            allowance: gross - 1,
+            gross,
+            fee_bps: fee_on_bps,
+            expected: false,
+            label: "insufficient (one stroop short of gross), fee_bps > 0",
+        },
+        AllowanceReqCase {
+            allowance: fee_on_net,
+            gross,
+            fee_bps: fee_on_bps,
+            expected: false,
+            label: "fee-on net-only allowance is insufficient vs gross",
+        },
+        AllowanceReqCase {
+            allowance: gross + 1,
+            gross,
+            fee_bps: 0,
+            expected: true,
+            label: "surplus allowance, fee_bps = 0",
+        },
+        AllowanceReqCase {
+            allowance: gross + 1,
+            gross,
+            fee_bps: fee_on_bps,
+            expected: true,
+            label: "surplus allowance, fee_bps > 0",
+        },
+    ];
+
+    for c in cases {
+        assert_eq!(
+            validation::required_allowance(c.gross, c.fee_bps),
+            c.gross,
+            "required allowance must be gross ({})",
+            c.label
+        );
+        assert_eq!(
+            validation::allowance_covers_gross(c.allowance, c.gross, c.fee_bps),
+            c.expected,
+            "{}",
+            c.label
+        );
+    }
+}
+
+struct SimulateAllowanceCase {
+    fee_bps: u32,
+    allowance: i128,
+    expected: ChargeSimResult,
+    label: &'static str,
+}
+
+/// `simulate_charge` uses the shared helper: fee-off and fee-on both require
+/// the gross amount, so a net-only allowance fails when fees are on.
+#[test]
+fn test_simulate_charge_allowance_requirement_table() {
+    let amount: i128 = 10_0000000;
+    let interval: u64 = 86400;
+    let fee_on_bps: u32 = 500;
+    let fee_on_net: i128 = amount - (amount * fee_on_bps as i128 / 10_000);
+
+    let cases = [
+        SimulateAllowanceCase {
+            fee_bps: 0,
+            allowance: 0,
+            expected: ChargeSimResult::InsufficientAllowance,
+            label: "zero allowance, fee_bps = 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: 0,
+            allowance: amount,
+            expected: ChargeSimResult::WouldSucceed,
+            label: "exact allowance, fee_bps = 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: 0,
+            allowance: amount - 1,
+            expected: ChargeSimResult::InsufficientAllowance,
+            label: "insufficient allowance, fee_bps = 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: 0,
+            expected: ChargeSimResult::InsufficientAllowance,
+            label: "zero allowance, fee_bps > 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: amount,
+            expected: ChargeSimResult::WouldSucceed,
+            label: "exact gross allowance, fee_bps > 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: amount - 1,
+            expected: ChargeSimResult::InsufficientAllowance,
+            label: "one stroop short of gross, fee_bps > 0",
+        },
+        SimulateAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: fee_on_net,
+            expected: ChargeSimResult::InsufficientAllowance,
+            label: "net-only allowance, fee_bps > 0",
+        },
+    ];
+
+    for c in cases {
+        let (env, contract_id, token_addr, user, merchant) = setup();
+        let client = FlowPayClient::new(&env, &contract_id);
+        let token = TokenClient::new(&env, &token_addr);
+
+        if c.fee_bps > 0 {
+            configure_fee(&env, &contract_id, c.fee_bps);
+        }
+
+        client.subscribe(
+            &user,
+            &merchant,
+            &amount,
+            &interval,
+            &token_addr,
+            &None,
+            &None,
+        );
+        token.approve(&user, &contract_id, &c.allowance, &200000);
+        env.ledger().with_mut(|l| {
+            l.timestamp += interval + 1;
+        });
+
+        assert_eq!(client.simulate_charge(&user), c.expected, "{}", c.label);
+    }
+}
+
+struct SubscribeAllowanceCase {
+    fee_bps: u32,
+    allowance: i128,
+    expect_ok: bool,
+    label: &'static str,
+}
+
+/// subscribe() validation uses the same gross-allowance helper, including
+/// when protocol fees are configured (requirement is still the gross amount).
+#[test]
+fn test_subscribe_allowance_requirement_table() {
+    let amount: i128 = 10_0000000;
+    let fee_on_bps: u32 = 500;
+    let fee_on_net: i128 = amount - (amount * fee_on_bps as i128 / 10_000);
+
+    let cases = [
+        SubscribeAllowanceCase {
+            fee_bps: 0,
+            allowance: 0,
+            expect_ok: false,
+            label: "zero allowance, fee_bps = 0",
+        },
+        SubscribeAllowanceCase {
+            fee_bps: 0,
+            allowance: amount,
+            expect_ok: true,
+            label: "exact allowance, fee_bps = 0",
+        },
+        SubscribeAllowanceCase {
+            fee_bps: 0,
+            allowance: amount - 1,
+            expect_ok: false,
+            label: "insufficient allowance, fee_bps = 0",
+        },
+        SubscribeAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: 0,
+            expect_ok: false,
+            label: "zero allowance, fee_bps > 0",
+        },
+        SubscribeAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: amount,
+            expect_ok: true,
+            label: "exact gross allowance, fee_bps > 0",
+        },
+        SubscribeAllowanceCase {
+            fee_bps: fee_on_bps,
+            allowance: fee_on_net,
+            expect_ok: false,
+            label: "net-only allowance, fee_bps > 0",
+        },
+    ];
+
+    for c in cases {
+        let (env, contract_id, token_addr, user, merchant) = setup();
+        let client = FlowPayClient::new(&env, &contract_id);
+        let token = TokenClient::new(&env, &token_addr);
+
+        if c.fee_bps > 0 {
+            configure_fee(&env, &contract_id, c.fee_bps);
+        }
+
+        token.approve(&user, &contract_id, &c.allowance, &200000);
+        let result =
+            client.try_subscribe(&user, &merchant, &amount, &86400, &token_addr, &None, &None);
+
+        if c.expect_ok {
+            assert!(result.is_ok(), "{}", c.label);
+            let sub = client.get_subscription(&user).unwrap();
+            assert_eq!(sub.amount, amount, "{}", c.label);
+        } else {
+            assert_eq!(
+                result,
+                Err(Ok(soroban_sdk::Error::from_contract_error(8))),
+                "{}",
+                c.label
+            );
+            assert!(
+                client.get_subscription(&user).is_none(),
+                "failed subscribe must not write storage ({})",
+                c.label
+            );
+        }
+    }
+}
+
+/// `has_sufficient_allowance` reads SAC allowance and never transfers.
+#[test]
+fn test_has_sufficient_allowance_does_not_transfer() {
+    let (env, contract_id, token_addr, user, _merchant) = setup();
+    let token = TokenClient::new(&env, &token_addr);
+    let amount: i128 = 1_0000000;
+    let balance_before = token.balance(&user);
+
+    env.as_contract(&contract_id, || {
+        assert!(validation::has_sufficient_allowance(
+            &env,
+            &user,
+            &token_addr,
+            amount
+        ));
+    });
+
+    token.approve(&user, &contract_id, &0, &200000);
+
+    env.as_contract(&contract_id, || {
+        assert!(!validation::has_sufficient_allowance(
+            &env,
+            &user,
+            &token_addr,
+            amount
+        ));
+        assert!(validation::has_sufficient_allowance(
+            &env,
+            &user,
+            &token_addr,
+            0
+        ));
+    });
+
+    assert_eq!(token.balance(&user), balance_before);
+}
+
 // Note: setter input validation is covered in contract code; invoking it directly
 // via the generated client isn't available in these tests. The storage-level
 // behavior for routing is covered by the tests above.

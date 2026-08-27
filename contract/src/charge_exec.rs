@@ -7,6 +7,7 @@ use crate::grace;
 use crate::merchant_stats;
 use crate::storage;
 use crate::subscription_history;
+use crate::validation;
 use crate::{extend_subscription_ttl, DataKey, Subscription};
 
 /// Outcome of dry-running/simulating a charge() call.
@@ -70,9 +71,7 @@ pub fn simulate_charge(env: &Env, user: Address) -> ChargeSimResult {
         return ChargeSimResult::GracePeriodElapsed;
     }
 
-    let token_client = soroban_sdk::token::Client::new(env, &sub.token);
-    let allowance = token_client.allowance(&user, &env.current_contract_address());
-    if allowance < sub.amount {
+    if !validation::has_sufficient_allowance(env, &user, &sub.token, sub.amount) {
         return ChargeSimResult::InsufficientAllowance;
     }
 
