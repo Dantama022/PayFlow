@@ -192,6 +192,38 @@ Events are emitted from `events.rs` and kept separate from storage mutation so t
 | `upg_proposed`                                     | WASM upgrade proposed (two-step)                              |
 | `migration_completed`                              | Storage schema migration finished                             |
 | `subscriber_index_ttl_extended`                    | Subscriber index TTL refreshed                                |
+| Event                                                           | Trigger                                                       |
+| --------------------------------------------------------------- | ------------------------------------------------------------- |
+| `subscribed`                                                    | New or replaced subscription created                          |
+| `referred`                                                      | Referrer stored on subscribe ([REFERRALS.md](./REFERRALS.md)) |
+| `charged`                                                       | Successful recurring charge                                   |
+| `pay_per_use`                                                   | Successful one-time charge                                    |
+| `cancelled`                                                     | Subscription cancelled                                        |
+| `cancelled_with_refund`                                         | Subscription cancelled with prorated refund                   |
+| `trial_extended`                                                | Trial period extended                                         |
+| `paused` / `resumed`                                            | Subscription pause state changed (user-initiated)             |
+| `subscription_paused`                                           | Subscription paused via batch admin operation                 |
+| `subscription_auto_resumed`                                     | Pause expiry passed; subscription auto-resumed on charge      |
+| `admin_transferred`                                             | Two-step admin transfer completed                             |
+| `fee_proposed` / `fee_committed` / `fee_cleared`                | Fee configuration changed                                     |
+| `merchant_fee_recipient_set`                                    | Per-merchant custom fee recipient configured                  |
+| `merchant_added` / `merchant_removed`                           | Whitelist updated                                             |
+| `merchant_frozen` / `merchant_unfrozen`                         | Merchant freeze state changed                                 |
+| `grace_period_proposed` / `grace_period_committed`              | Grace period updated                                          |
+| `sub_amount_updated` / `sub_interval_updated`                   | Admin adjusted a subscription                                 |
+| `merchant_withdrawal`                                           | Merchant withdrew revenue                                     |
+| `daily_limit_set` / `daily_limit_removed`                       | Daily limit updated                                           |
+| `daily_window_started`                                          | Daily spending window reset for a user                        |
+| `subscription_transferred`                                      | Subscription ownership moved                                  |
+| `sub_transferred`                                               | Legacy subscription transfer event                            |
+| `min_interval_set`                                              | Minimum subscription interval updated                         |
+| `merch_hist_cleared`                                            | Merchant revenue history cleared                              |
+| `contract_paused` / `contract_unpaused`                         | Global contract pause toggled                                 |
+| `upgrade`                                                       | Contract WASM upgraded                                        |
+| `upg_proposed`                                                  | WASM upgrade proposed (two-step)                              |
+| `migration_completed`                                           | Storage schema migration finished                             |
+| `subscriber_index_ttl_extended`                                 | Subscriber index TTL refreshed                                |
+| `subscriber_index_cleared`                                      | Admin repaired a stale subscriber index slot                  |
 
 Events are the main off-chain integration surface for analytics, indexers, and the keeper workflow.
 

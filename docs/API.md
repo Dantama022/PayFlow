@@ -70,6 +70,7 @@ This document tracks the current public contract surface in [contract/src/lib.rs
   - [get\_subscriber\_at](#get_subscriber_at)
   - [get\_subscriber\_page](#get_subscriber_page)
   - [get\_active\_subscriber\_page](#get_active_subscriber_page)
+  - [clear\_subscriber\_index\_entry](#clear_subscriber_index_entry)
   - [get\_merchant\_revenue](#get_merchant_revenue)
   - [get\_merchant\_revenue\_history](#get_merchant_revenue_history)
   - [clear\_merchant\_revenue\_history](#clear_merchant_revenue_history)
@@ -149,12 +150,13 @@ Returned by live `batch_charge` and by `get_batch_charge_estimate`. Defined in `
 
 ```rust
 pub enum ChargeResult {
-  Charged,            // live: funds transferred; estimate: would charge (see caveats)
-  Skipped,            // interval has not elapsed
-  NoSubscription,     // no subscription record
-  Inactive,           // cancelled / inactive
-  Paused,             // still paused
-  GracePeriodElapsed, // past the grace window
+  Charged,
+  Skipped,
+  NoSubscription,
+  Inactive,
+  Paused,
+  GracePeriodElapsed,
+  AllowanceInsufficient,
 }
 ```
 
@@ -166,6 +168,15 @@ pub enum ChargeResult {
 | `Inactive`           | Cancelled / inactive      | Same                                                            |
 | `Paused`             | Still paused              | Same                                                            |
 | `GracePeriodElapsed` | Past grace window         | Same                                                            |
+| Variant | Meaning on `batch_charge` | Meaning on `get_batch_charge_estimate` |
+| --- | --- | --- |
+| `Charged` | Transfer succeeded | Precheck passed (or auto-resume short-circuit; **no transfer**) |
+| `Skipped` | Interval not elapsed | Same (via `precheck_charge`) |
+| `NoSubscription` | No record | Same |
+| `Inactive` | Cancelled / inactive | Same |
+| `Paused` | Still paused | Same |
+| `GracePeriodElapsed` | Past grace window | Same |
+| `AllowanceInsufficient` | Allowance below gross amount; no transfer | Same precheck path as live charge |
 
 This type is **not** the dry-run enum. Single-user simulation uses [`ChargeSimResult`](#chargesimresult).
 
@@ -1462,6 +1473,34 @@ CLI example:
 
 ```bash
 soroban contract invoke --id <CONTRACT_ID> --network testnet -- get_active_subscriber_page --offset 0 --limit 50
+```
+
+### `clear_subscriber_index_entry`
+
+Admin repair for a **single** stale subscriber-index slot. Looks up the occupant of `index`, refuses if that subscriber currently has an active subscription, then tombstones the slot so keepers skip it. Does **not** garbage-collect the rest of the index.
+
+```
+clear_subscriber_index_entry(env: Env, index: u64)
+```
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `index` | `u64` | Slot in the append-only `SubscriberIndex`. |
+
+**Auth:** Contract admin only (`require_admin`).
+
+**Errors:** `ContractError::NoSubscriptionFound` if `index` is out of range, empty, or already tombstoned. `ContractError::CannotClearActiveSubscriber` if the occupant still has an active subscription.
+
+**Event emitted**
+
+| Event name | Topic | Data |
+| --- | --- | --- |
+| `subscriber_index_cleared` | `("subscriber_index_cleared", user_address)` | `index: u64` |
+
+CLI example:
+
+```bash
+soroban contract invoke --id <CONTRACT_ID> --network testnet --source-account <ADMIN> -- clear_subscriber_index_entry --index 0
 ```
 
 ### `get_merchant_revenue`
@@ -2930,6 +2969,8 @@ For a complete reference of all events with detailed schemas and examples, see [
 | `referred`                 | `("referred", user_address)`                             | `referrer_address`                    |
 | `subscription_transferred` | `("subscription_transferred", from_address, to_address)` | `(merchant, amount, interval, token)` |
 | `subscription_repaired`    | `("subscription_repaired", user_address)`                | `fixed_inconsistencies: u32`          |
+| `subscription_repaired` | `("subscription_repaired", user_address)` | `fixed_inconsistencies: u32` |
+| `subscriber_index_cleared` | `("subscriber_index_cleared", user_address)` | `index: u64` |
 
 ---
 
@@ -2954,3 +2995,21 @@ All error conditions are returned as `ContractError` values. Client SDKs can dec
 | 33   | `InvalidVolumeCap`       | `set_global_volume_cap` was called with a non-positive cap.                     |
 | 34   | `InvalidFeeBounds`       | `set_fee_bounds` min/max is inconsistent or `max_bps > 10000`.                  |
 | 35   | `FeeOutOfBoundsAtCommit` | `commit_fee` pending bps is outside current fee bounds.                         |
+| Code | Variant | Description |
+| --- | --- | --- |
+| 1 | `AlreadyInitialized` | `initialize()` was called on an already-initialized contract. |
+| 2 | `AmountMustBePositive` | A payment or subscription amount was zero or negative. |
+| 3 | `IntervalMustBePositive` | A subscription interval was zero. |
+| 4 | `NoSubscriptionFound` | No subscription record exists for the given user. |
+| 5 | `SubscriptionInactive` | The subscription exists but is cancelled or paused. |
+| 6 | `IntervalNotElapsed` | `charge()` was called before the billing interval elapsed. |
+| 7 | `NotInitialized` | A contract function was called before `initialize()`. |
+| 8 | `InsufficientAllowance` | The user's token allowance is below the subscription amount. |
+| 9 | `GracePeriodElapsed` | The charge grace period has passed; the subscription cannot be charged. |
+| 10 | `MerchantNotWhitelisted` | The merchant is not on the whitelist (when whitelist is enabled). |
+| 11 | `ContractPaused` | The contract is paused; all user-facing write operations are blocked. |
+| 24 | `DailyLimitExceeded` | A `pay_per_use()` call would exceed the user's configured daily spending limit. |
+| 33 | `InvalidVolumeCap` | `set_global_volume_cap` was called with a non-positive cap. |
+| 34 | `InvalidFeeBounds` | `set_fee_bounds` min/max is inconsistent or `max_bps > 10000`. |
+| 35 | `FeeOutOfBoundsAtCommit` | `commit_fee` pending bps is outside current fee bounds. |
+| 41 | `CannotClearActiveSubscriber` | `clear_subscriber_index_entry` refused because the slot occupant is still active. |
