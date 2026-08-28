@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { useAdmin } from "./hooks/useAdmin";
 import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
@@ -9,6 +10,7 @@ import MerchantDashboard from "./components/MerchantDashboard";
 import WalletSelectModal from "./components/WalletSelectModal";
 import WalletBar from "./components/WalletBar";
 import TabBar from "./components/TabBar";
+import OfflineBanner from "./components/OfflineBanner";
 import AdminDashboard from "./pages/AdminDashboard";
 import type { WalletAdapter } from "./services/wallets/WalletAdapter";
 
@@ -19,10 +21,24 @@ export default function App() {
     useWallet();
   const { announcement, announce } = useAccessibility();
   const { networkMatch, walletNetwork } = useNetworkCheck();
+  const isOnline = useNetworkStatus();
   const { isAdmin } = useAdmin(publicKey);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refresh, setRefresh] = useState(0);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const wasOnline = useRef(isOnline);
+
+  // Announce connectivity changes via the ARIA live region (issue: disable
+  // mutating CTAs while offline + announce status).
+  useEffect(() => {
+    if (wasOnline.current === isOnline) return;
+    wasOnline.current = isOnline;
+    announce(
+      isOnline
+        ? "Back online. Wallet actions are available again."
+        : "You are offline. Wallet actions are unavailable."
+    );
+  }, [isOnline, announce]);
 
   async function handleSelectWallet(adapter: WalletAdapter) {
     setShowWalletModal(false);
@@ -40,6 +56,8 @@ export default function App() {
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {announcement}
       </div>
+
+      <OfflineBanner visible={!isOnline} />
 
       {/* Header */}
       <div style={{ marginBottom: 32, textAlign: "center" }}>
@@ -103,6 +121,8 @@ export default function App() {
                   setTab("dashboard");
                   setRefresh((r) => r + 1);
                 }}
+                announce={announce}
+                isOffline={!isOnline}
               />
             )}
             {tab === "dashboard" && (
@@ -111,6 +131,7 @@ export default function App() {
                 onSign={signAndSubmit}
                 refreshTrigger={refresh}
                 announce={announce}
+                isOffline={!isOnline}
               />
             )}
             {tab === "merchant" && (
