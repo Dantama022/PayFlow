@@ -5,9 +5,19 @@ interface Props {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Optional extra content (e.g. form fields) rendered between the message and actions. */
+  children?: React.ReactNode;
+  /** Disables the confirm button, e.g. while a bounded input is invalid. */
+  confirmDisabled?: boolean;
 }
 
-export default function ConfirmModal({ message, onConfirm, onCancel }: Props) {
+export default function ConfirmModal({
+  message,
+  onConfirm,
+  onCancel,
+  children,
+  confirmDisabled = false,
+}: Props) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useFocusTrap(modalRef, true, onCancel);
@@ -23,11 +33,12 @@ export default function ConfirmModal({ message, onConfirm, onCancel }: Props) {
         aria-labelledby="confirm-modal-message"
       >
         <p id="confirm-modal-message">{message}</p>
+        {children}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onCancel}>
             Cancel
           </button>
-          <button className="btn-danger" onClick={onConfirm}>
+          <button className="btn-danger" onClick={onConfirm} disabled={confirmDisabled}>
             Confirm
           </button>
         </div>

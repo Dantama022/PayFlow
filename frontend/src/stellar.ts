@@ -143,6 +143,16 @@ export async function buildPauseTx(user: string): Promise<string> {
   return buildTx(user, "pause", [addressVal(user)]);
 }
 
+/**
+ * Builds a `pause_until` transaction that pauses the subscription up to a
+ * specific Unix timestamp (seconds). The contract rejects (InvalidPauseExpiry)
+ * any `expiry` that is not strictly in the future, so callers should validate
+ * client-side before building the transaction to avoid a wasted round trip.
+ */
+export async function buildPauseUntilTx(user: string, expiry: bigint): Promise<string> {
+  return buildTx(user, "pause_until", [addressVal(user), nativeToScVal(expiry, { type: "u64" })]);
+}
+
 export async function buildResumeTx(user: string): Promise<string> {
   return buildTx(user, "resume", [addressVal(user)]);
 }
