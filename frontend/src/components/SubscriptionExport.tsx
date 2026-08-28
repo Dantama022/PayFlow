@@ -1,10 +1,5 @@
 import React, { useCallback, useState } from "react";
-import {
-  getSubscriptionToken,
-  getReferral,
-  getReferrer,
-  getSubscriptionHealth
-} from "../stellar";
+import { getSubscriptionToken, getReferral, getReferrer, getSubscriptionHealth } from "../stellar";
 import Spinner from "./Spinner";
 
 type ExportFormat = "csv" | "json";
@@ -33,7 +28,7 @@ export const EXPORT_HEADERS = [
   "health_active",
   "health_paused",
   "health_charge_due",
-  "health_has_sufficient_allowance"
+  "health_has_sufficient_allowance",
 ] as const;
 
 // ── Serialisation helpers ─────────────────────────────────────────────────────
@@ -222,8 +217,16 @@ export default function SubscriptionExport({
           onClick={handleExport}
           disabled={isEmpty || exporting}
           type="button"
-          title={isEmpty ? "No data to export" : exporting ? "Fetching on-chain data..." : `Download ${format.toUpperCase()}`}
-          aria-label={exporting ? "Enriching and downloading..." : `${label} as ${format.toUpperCase()}`}
+          title={
+            isEmpty
+              ? "No data to export"
+              : exporting
+                ? "Fetching on-chain data..."
+                : `Download ${format.toUpperCase()}`
+          }
+          aria-label={
+            exporting ? "Enriching and downloading..." : `${label} as ${format.toUpperCase()}`
+          }
         >
           {exporting ? (
             <span className="flex gap-2 items-center">

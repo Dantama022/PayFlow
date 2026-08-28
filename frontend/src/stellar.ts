@@ -81,7 +81,9 @@ export interface ContractEvent {
 
 /** Practical C-prefixed Stellar contract ID shape check */
 export function isValidContractIdShape(id: string): boolean {
-  return typeof id === "string" && id.startsWith("C") && id.length === 56 && /^[A-Z0-9]+$/i.test(id);
+  return (
+    typeof id === "string" && id.startsWith("C") && id.length === 56 && /^[A-Z0-9]+$/i.test(id)
+  );
 }
 
 /** Convert a Stellar public key string to an ScVal Address */
@@ -107,7 +109,9 @@ async function buildTx(
     try {
       const { networkPassphrase } = await window.freighter.getNetwork();
       if (networkPassphrase !== NETWORK_PASSPHRASE) {
-        throw new Error("Wallet network passphrase mismatch with configured VITE_NETWORK_PASSPHRASE");
+        throw new Error(
+          "Wallet network passphrase mismatch with configured VITE_NETWORK_PASSPHRASE"
+        );
       }
     } catch {
       // Older Freighter or getNetwork failure
@@ -1429,7 +1433,7 @@ export function getSubscriptionToken(user: string): Promise<string | null> {
       if ("error" in result) return null;
       const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
       if (!retval || retval.switch().name === "scvVoid") return null;
-      
+
       const decoded = ScValDecoder.decodeStruct(retval, {
         token: ScValDecoder.decodeAddress,
       });

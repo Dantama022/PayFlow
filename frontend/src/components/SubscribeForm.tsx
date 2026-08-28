@@ -61,7 +61,8 @@ export default function SubscribeForm({
   const { errors, validate, validating } = useFormValidation();
   const { toasts, addToast, removeToast } = useToast();
 
-  const amountString = amountStroops !== null ? (Number(amountStroops) / 10_000_000).toString() : "";
+  const amountString =
+    amountStroops !== null ? (Number(amountStroops) / 10_000_000).toString() : "";
   const fields: FormFields = { merchant, amount: amountString, interval };
   const canSubmit = fieldsAreValid(fields) && !pending && !validating && !isPaused;
 
@@ -71,7 +72,15 @@ export default function SubscribeForm({
       validate(fields);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on field values + touched
-  }, [merchant, amountStroops, interval, touched.merchant, touched.amount, touched.interval, validate]);
+  }, [
+    merchant,
+    amountStroops,
+    interval,
+    touched.merchant,
+    touched.amount,
+    touched.interval,
+    validate,
+  ]);
 
   function handleBlur(field: keyof TouchedFields) {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -164,11 +173,7 @@ export default function SubscribeForm({
 
       {/* Amount Field */}
       <div data-testid="amount-wrapper" onBlur={() => handleBlur("amount")}>
-        <StroopInput
-          label="Amount"
-          onChange={setAmountStroops}
-          disabled={pending || isPaused}
-        />
+        <StroopInput label="Amount" onChange={setAmountStroops} disabled={pending || isPaused} />
         {amountError && (
           <span
             id="amount-error"

@@ -13,11 +13,15 @@ interface Props {
   testId?: string;
 }
 
-function validate(raw: string, unit: AmountUnit, maxStroops: bigint = MAX_STROOPS): { stroops: bigint | null; error: string | null } {
+function validate(
+  raw: string,
+  unit: AmountUnit,
+  maxStroops: bigint = MAX_STROOPS
+): { stroops: bigint | null; error: string | null } {
   if (!raw) return { stroops: null, error: null };
   const num = parseFloat(raw);
   if (isNaN(num) || num <= 0) return { stroops: null, error: "Must be a positive number" };
-  
+
   let stroops: bigint;
   if (unit === "XLM") {
     const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
@@ -37,23 +41,32 @@ function validate(raw: string, unit: AmountUnit, maxStroops: bigint = MAX_STROOP
   if (stroops < MIN_STROOPS) {
     return {
       stroops: null,
-      error: unit === "XLM"
-        ? `Must be at least ${Number(MIN_STROOPS) / STROOPS_PER_XLM} XLM`
-        : `Must be at least ${MIN_STROOPS} STROOP`,
+      error:
+        unit === "XLM"
+          ? `Must be at least ${Number(MIN_STROOPS) / STROOPS_PER_XLM} XLM`
+          : `Must be at least ${MIN_STROOPS} STROOP`,
     };
   }
   if (stroops > maxStroops) {
     return {
       stroops: null,
-      error: unit === "XLM"
-        ? `Must be at most ${Number(maxStroops) / STROOPS_PER_XLM} XLM`
-        : `Must be at most ${maxStroops} STROOP`,
+      error:
+        unit === "XLM"
+          ? `Must be at most ${Number(maxStroops) / STROOPS_PER_XLM} XLM`
+          : `Must be at most ${maxStroops} STROOP`,
     };
   }
   return { stroops, error: null };
 }
 
-export default function StroopInput({ label, onChange, disabled, initialValue, id = "amount-input", testId = "amount-input" }: Props) {
+export default function StroopInput({
+  label,
+  onChange,
+  disabled,
+  initialValue,
+  id = "amount-input",
+  testId = "amount-input",
+}: Props) {
   const { unit } = useAmountDisplay();
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +135,9 @@ export default function StroopInput({ label, onChange, disabled, initialValue, i
 
   return (
     <label className="form-group">
-      <span className="form-label">{label} ({unit})</span>
+      <span className="form-label">
+        {label} ({unit})
+      </span>
       <input
         id={id}
         data-testid={testId}

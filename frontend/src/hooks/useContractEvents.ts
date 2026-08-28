@@ -56,7 +56,7 @@ export function useContractEvents(
       });
 
       setEvents(unique.slice(0, maxEvents));
-      
+
       // If we haven't paginated yet, use the PollingManager's cursor
       if (moreEvents.length === 0) {
         setHasMore(!!state.nextCursor);

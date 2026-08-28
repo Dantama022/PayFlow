@@ -8,7 +8,9 @@ interface UseContractIdResult {
 }
 
 function isValidContractIdShape(id: string): boolean {
-  return typeof id === "string" && id.startsWith("C") && id.length === 56 && /^[A-Z0-9]+$/i.test(id);
+  return (
+    typeof id === "string" && id.startsWith("C") && id.length === 56 && /^[A-Z0-9]+$/i.test(id)
+  );
 }
 
 /**

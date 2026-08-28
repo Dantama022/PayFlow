@@ -163,7 +163,11 @@ export default function App() {
               />
             )}
             {tab === "admin" && isAdmin && (
-              <AdminDashboard publicKey={publicKey} onSign={signAndSubmit} gatePassed={gatePassed} />
+              <AdminDashboard
+                publicKey={publicKey}
+                onSign={signAndSubmit}
+                gatePassed={gatePassed}
+              />
             )}
           </div>
         </>

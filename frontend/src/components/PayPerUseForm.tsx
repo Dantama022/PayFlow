@@ -14,11 +14,15 @@ interface PayPerUseFormProps {
   warningReason?: string;
 }
 
-function validate(raw: string, unit: AmountUnit, maxStroops: bigint): { stroops: bigint | null; error: string | null } {
+function validate(
+  raw: string,
+  unit: AmountUnit,
+  maxStroops: bigint
+): { stroops: bigint | null; error: string | null } {
   if (!raw) return { stroops: null, error: null };
   const num = parseFloat(raw);
   if (isNaN(num) || num <= 0) return { stroops: null, error: "Must be a positive number" };
-  
+
   let stroops: bigint;
   if (unit === "XLM") {
     const decimals = raw.includes(".") ? raw.split(".")[1].length : 0;
@@ -36,17 +40,19 @@ function validate(raw: string, unit: AmountUnit, maxStroops: bigint): { stroops:
   if (stroops < MIN_STROOPS) {
     return {
       stroops: null,
-      error: unit === "XLM"
-        ? `Must be at least ${Number(MIN_STROOPS) / STROOPS_PER_XLM} XLM`
-        : `Must be at least ${MIN_STROOPS} STROOP`,
+      error:
+        unit === "XLM"
+          ? `Must be at least ${Number(MIN_STROOPS) / STROOPS_PER_XLM} XLM`
+          : `Must be at least ${MIN_STROOPS} STROOP`,
     };
   }
   if (stroops > maxStroops) {
     return {
       stroops: null,
-      error: unit === "XLM"
-        ? `Must be at most ${Number(maxStroops) / STROOPS_PER_XLM} XLM`
-        : `Must be at most ${maxStroops} STROOP`,
+      error:
+        unit === "XLM"
+          ? `Must be at most ${Number(maxStroops) / STROOPS_PER_XLM} XLM`
+          : `Must be at most ${maxStroops} STROOP`,
     };
   }
   return { stroops, error: null };
@@ -79,13 +85,21 @@ const PayPerUseForm = forwardRef<HTMLInputElement, PayPerUseFormProps>(
     }, [amount, lastValue]);
 
     useEffect(() => {
-      const { stroops, error: err } = validate(debouncedValue, unit, CONTRACT_LIMITS.MAX_PAY_PER_USE_AMOUNT);
+      const { stroops, error: err } = validate(
+        debouncedValue,
+        unit,
+        CONTRACT_LIMITS.MAX_PAY_PER_USE_AMOUNT
+      );
       setConvertedStroops(stroops);
       setError(err);
     }, [debouncedValue, unit]);
 
     function handleBlur() {
-      const { stroops, error: err } = validate(amount, unit, CONTRACT_LIMITS.MAX_PAY_PER_USE_AMOUNT);
+      const { stroops, error: err } = validate(
+        amount,
+        unit,
+        CONTRACT_LIMITS.MAX_PAY_PER_USE_AMOUNT
+      );
       setConvertedStroops(stroops);
       setError(err);
     }
