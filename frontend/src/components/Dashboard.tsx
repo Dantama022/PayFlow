@@ -244,7 +244,7 @@ export default function Dashboard({
         </>
       )}
 
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <ToastContainer toasts={toasts} onRemove={removeToast} isPaused={isPaused} />
 
       {showDailyLimit && sub?.active && (
         <DailyLimitModal
