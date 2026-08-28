@@ -14,6 +14,7 @@ import AllowanceDisplay from "./AllowanceDisplay";
 import AddressBook from "./AddressBook";
 import ToastContainer from "./Toast";
 import { useToast } from "../hooks/useToast";
+import StroopInput from "./StroopInput";
 
 interface Props {
   userKey: string;
@@ -45,7 +46,7 @@ export default function SubscribeForm({
   isPaused = false,
 }: Props) {
   const [merchant, setMerchant] = useState("");
-  const [amount, setAmount] = useState("");
+  const [amountStroops, setAmountStroops] = useState<bigint | null>(null);
   const [interval, setInterval] = useState(BILLING_INTERVALS[2].value);
   const [referrer, setReferrer] = useState("");
   const [touched, setTouched] = useState<TouchedFields>({
@@ -60,7 +61,8 @@ export default function SubscribeForm({
   const { errors, validate, validating } = useFormValidation();
   const { toasts, addToast, removeToast } = useToast();
 
-  const fields: FormFields = { merchant, amount, interval };
+  const amountString = amountStroops !== null ? (Number(amountStroops) / 10_000_000).toString() : "";
+  const fields: FormFields = { merchant, amount: amountString, interval };
   const canSubmit = fieldsAreValid(fields) && !pending && !validating && !isPaused;
 
   // Re-validate when touched fields change so errors clear as the user corrects them.
@@ -69,7 +71,7 @@ export default function SubscribeForm({
       validate(fields);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on field values + touched
-  }, [merchant, amount, interval, touched.merchant, touched.amount, touched.interval, validate]);
+  }, [merchant, amountStroops, interval, touched.merchant, touched.amount, touched.interval, validate]);
 
   function handleBlur(field: keyof TouchedFields) {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -80,26 +82,21 @@ export default function SubscribeForm({
     setMerchant(e.target.value);
   }
 
-  function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
-    setAmount(e.target.value);
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched({ merchant: true, amount: true, interval: true });
     setStatus(null);
 
     const ok = validate(fields);
-    if (!ok) return;
+    if (!ok || amountStroops === null) return;
 
     setPending(true);
     announce?.("Transaction submitted");
     try {
-      const stroops = BigInt(Math.round(parseFloat(amount) * 10_000_000));
       const xdr = await buildSubscribeTx(
         userKey,
         merchant,
-        stroops,
+        amountStroops,
         BigInt(interval),
         DEFAULT_TOKEN,
         referrer.trim() || null,
@@ -166,24 +163,11 @@ export default function SubscribeForm({
       </div>
 
       {/* Amount Field */}
-      <div className="form-group">
-        <label className="form-label" htmlFor="amount-input">
-          Amount (XLM per period)
-        </label>
-        <input
-          id="amount-input"
-          data-testid="amount-input"
-          name="amount"
-          className="input"
-          type="number"
-          min="0.0000001"
-          step="0.0000001"
-          placeholder="5"
-          value={amount}
-          onChange={handleAmountChange}
-          onBlur={() => handleBlur("amount")}
-          aria-invalid={amountError ? true : undefined}
-          aria-describedby={amountError ? "amount-error" : undefined}
+      <div data-testid="amount-wrapper" onBlur={() => handleBlur("amount")}>
+        <StroopInput
+          label="Amount"
+          onChange={setAmountStroops}
+          disabled={pending || isPaused}
         />
         {amountError && (
           <span

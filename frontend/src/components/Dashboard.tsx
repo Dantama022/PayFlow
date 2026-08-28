@@ -201,6 +201,7 @@ export default function Dashboard({
                   <SubscriptionExport
                     data={[
                       {
+                        subscriber: userKey,
                         merchant: sub.merchant,
                         amount_stroops: sub.amount,
                         interval_seconds: sub.interval,

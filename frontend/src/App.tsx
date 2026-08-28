@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
 import { useAdmin } from "./hooks/useAdmin";
+import { useContractId } from "./hooks/useContractId";
 import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
 import MerchantDashboard from "./components/MerchantDashboard";
@@ -19,10 +20,29 @@ export default function App() {
     useWallet();
   const { announcement, announce } = useAccessibility();
   const { networkMatch, walletNetwork } = useNetworkCheck();
+  const { contractId, valid: isContractIdValid, error: contractIdError } = useContractId();
   const { isAdmin } = useAdmin(publicKey);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refresh, setRefresh] = useState(0);
   const [showWalletModal, setShowWalletModal] = useState(false);
+
+  // Combine configuration and network validation into a single actionable gate
+  let gatePassed = true;
+  let gateError: string | null = null;
+
+  if (!isContractIdValid) {
+    gatePassed = false;
+    gateError = contractIdError;
+  } else if (publicKey && !networkMatch) {
+    gatePassed = false;
+    gateError = `Wallet is on "${walletNetwork}" — app expects a different network. Please switch your wallet network to match "${import.meta.env.VITE_NETWORK_PASSPHRASE || "testnet"}".`;
+  }
+
+  useEffect(() => {
+    if (gateError) {
+      announce?.(`Configuration Warning: ${gateError}`);
+    }
+  }, [gateError, announce]);
 
   async function handleSelectWallet(adapter: WalletAdapter) {
     setShowWalletModal(false);
@@ -49,15 +69,15 @@ export default function App() {
         </p>
       </div>
 
-      {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
-      {publicKey && !networkMatch && (
+      {/* Actionable gate warning banner */}
+      {gateError && (
         <div
           className="card"
           style={{ background: "#3b1f1f", marginBottom: 16, textAlign: "center" }}
+          data-testid="gate-warning"
         >
           <p style={{ color: "#f87171", fontSize: 13 }}>
-            ⚠ Wallet is on <strong>{walletNetwork}</strong> — app expects a different network.
-            Please switch your wallet network.
+            ⚠ <strong>Configuration/Network Gate Warning:</strong> {gateError}
           </p>
         </div>
       )}
@@ -103,6 +123,7 @@ export default function App() {
                   setTab("dashboard");
                   setRefresh((r) => r + 1);
                 }}
+                isPaused={!gatePassed}
               />
             )}
             {tab === "dashboard" && (
@@ -111,6 +132,7 @@ export default function App() {
                 onSign={signAndSubmit}
                 refreshTrigger={refresh}
                 announce={announce}
+                isPaused={!gatePassed}
               />
             )}
             {tab === "merchant" && (
@@ -121,7 +143,7 @@ export default function App() {
               />
             )}
             {tab === "admin" && isAdmin && (
-              <AdminDashboard publicKey={publicKey} onSign={signAndSubmit} />
+              <AdminDashboard publicKey={publicKey} onSign={signAndSubmit} gatePassed={gatePassed} />
             )}
           </div>
         </>
