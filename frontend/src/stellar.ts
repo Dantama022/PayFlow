@@ -1046,6 +1046,82 @@ export async function getContractHealth(caller: string): Promise<ContractHealthR
   return report;
 }
 
+// ── Protocol stats / health check (read-only, mirrors contract types) ───────
+
+/** Mirrors contract `ProtocolStats` from `get_protocol_stats`. */
+export interface ProtocolStats {
+  activeCount: bigint;
+  feeBps: number;
+  feeCollector: string | null;
+  gracePeriod: bigint;
+  whitelistEnabled: boolean;
+  schemaVersion: number;
+  contractPaused: boolean;
+}
+
+/** Mirrors contract `HealthReport` from `contract_health_check`. */
+export interface ContractHealthCheckReport {
+  isHealthy: boolean;
+  contractPaused: boolean;
+  tokenConfigured: boolean;
+  adminConfigured: boolean;
+  instanceTtlLedgers: number;
+  activeSubscriptionCount: bigint;
+  schemaVersion: number;
+  feeCollectorSet: boolean;
+  globalVolumeUtilizationPct: number;
+  pendingMerchantRevCount: number;
+}
+
+const decodeU32 = (v: xdr.ScVal): number => Number(v.u32());
+
+/** Reads aggregate protocol stats (active count, fee, grace, pause, schema version). */
+export function getProtocolStats(caller: string): Promise<ProtocolStats | null> {
+  return dedupedCall(`getProtocolStats:${caller}`, async () => {
+    try {
+      const retval = await simulateContractRead(caller, "get_protocol_stats", []);
+      if (!retval || retval.switch().name === "scvVoid") return null;
+
+      return ScValDecoder.decodeStruct<ProtocolStats>(retval, {
+        activeCount: (v) => ScValDecoder.decodeU64(v),
+        feeBps: decodeU32,
+        feeCollector: (v) => ScValDecoder.decodeOption(v, ScValDecoder.decodeAddress),
+        gracePeriod: (v) => ScValDecoder.decodeU64(v),
+        whitelistEnabled: ScValDecoder.decodeBool,
+        schemaVersion: decodeU32,
+        contractPaused: ScValDecoder.decodeBool,
+      });
+    } catch {
+      return null;
+    }
+  });
+}
+
+/** Runs the contract's own `contract_health_check` read-only diagnostic. */
+export function getContractHealthCheck(caller: string): Promise<ContractHealthCheckReport | null> {
+  return dedupedCall(`getContractHealthCheck:${caller}`, async () => {
+    try {
+      const retval = await simulateContractRead(caller, "contract_health_check", []);
+      if (!retval || retval.switch().name === "scvVoid") return null;
+
+      return ScValDecoder.decodeStruct<ContractHealthCheckReport>(retval, {
+        isHealthy: ScValDecoder.decodeBool,
+        contractPaused: ScValDecoder.decodeBool,
+        tokenConfigured: ScValDecoder.decodeBool,
+        adminConfigured: ScValDecoder.decodeBool,
+        instanceTtlLedgers: decodeU32,
+        activeSubscriptionCount: (v) => ScValDecoder.decodeU64(v),
+        schemaVersion: decodeU32,
+        feeCollectorSet: ScValDecoder.decodeBool,
+        globalVolumeUtilizationPct: decodeU32,
+        pendingMerchantRevCount: decodeU32,
+      });
+    } catch {
+      return null;
+    }
+  });
+}
+
 const VALIDATION_TIMEOUT_MS = 30_000;
 
 function parseScString(val: xdr.ScVal): string {
