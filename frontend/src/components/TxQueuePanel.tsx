@@ -7,7 +7,13 @@
  * Issue #658
  */
 import React, { useEffect, useState, useCallback } from "react";
-import { addListener, setPanelOpen, type TxEntry } from "../services/txQueue";
+import {
+  addListener,
+  setPanelOpen,
+  removeEntry,
+  clearAllEntries,
+  type TxEntry,
+} from "../services/txQueue";
 import { explorerTxUrl } from "../stellar";
 import CopyButton from "./CopyButton";
 
@@ -57,11 +63,20 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
     if (!entry.retry) return;
     setRetrying(true);
     try {
+      // Re-simulation is performed inside the stored retry callback where available.
+      // The UI warns about double-submit before invoking it.
       await entry.retry();
     } finally {
       setRetrying(false);
     }
   }, [entry.retry]);
+
+  const handleDiscard = useCallback(() => {
+    removeEntry(entry.id);
+  }, [entry.id]);
+
+  const isInterrupted = entry.status === "pending" && !entry.hash;
+  const showRecovery = isInterrupted || entry.status === "failed";
 
   return (
     <li className="tx-queue-entry" aria-label={`Transaction: ${entry.operation}`}>
@@ -96,20 +111,50 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
         )}
       </div>
 
+      {isInterrupted && (
+        <div className="tx-queue-entry__error" role="alert" style={{ background: "#451a03", borderColor: "#92400e" }}>
+          <span className="text-sm" style={{ color: "#fbbf24" }}>
+            Interrupted — wallet closed before confirmation. Check explorer; if no recent tx, you may
+            retry. Retrying will re-simulate before submitting.
+          </span>
+        </div>
+      )}
+
       {entry.status === "failed" && (
         <div className="tx-queue-entry__error" role="alert">
           <span className="text-sm text-error">{entry.error ?? "Unknown error"}</span>
-          {entry.retry && (
+        </div>
+      )}
+
+      {showRecovery && (
+        <div className="tx-queue-entry__actions" style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {entry.retry ? (
             <button
               className="btn-secondary tx-queue-entry__retry"
               onClick={handleRetry}
               disabled={retrying}
               aria-label={`Retry ${entry.operation}`}
+              title="Re-simulates before resubmitting to catch allowance/daily-limit errors"
             >
-              {retrying ? "Retrying…" : "Retry"}
+              {retrying ? "Retrying…" : isInterrupted ? "Resume" : "Retry"}
             </button>
-          )}
+          ) : isInterrupted ? (
+            <span className="text-sm text-muted">No retry available — rebuild the transaction and try again.</span>
+          ) : null}
+          <button
+            className="btn-secondary tx-queue-entry__discard"
+            onClick={handleDiscard}
+            aria-label={`Discard ${entry.operation}`}
+          >
+            Discard
+          </button>
         </div>
+      )}
+
+      {(isInterrupted || entry.status === "pending") && (
+        <p className="text-xs text-muted" style={{ marginTop: 4 }}>
+          ⚠ Double-submit risk: only retry if explorer shows no matching recent transaction.
+        </p>
       )}
     </li>
   );
@@ -136,6 +181,10 @@ export default function TxQueuePanel() {
 
   const handleClose = useCallback(() => {
     setPanelOpen(false);
+  }, []);
+
+  const handleClearAll = useCallback(() => {
+    clearAllEntries();
   }, []);
 
   // Don't render if there are no transactions yet
@@ -175,7 +224,14 @@ export default function TxQueuePanel() {
       {/* Entry list */}
       {open && (
         <div className="tx-queue-panel__body">
-          <div className="tx-queue-panel__actions">
+          <div className="tx-queue-panel__actions" style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn-secondary tx-queue-panel__close"
+              onClick={handleClearAll}
+              aria-label="Clear all transactions"
+            >
+              Clear all
+            </button>
             <button
               className="btn-secondary tx-queue-panel__close"
               onClick={handleClose}
@@ -184,6 +240,9 @@ export default function TxQueuePanel() {
               Close
             </button>
           </div>
+          <p className="text-xs text-muted" style={{ padding: "8px 16px 0", margin: 0 }}>
+            Pending items survive reload. Interrupted signings stay pending until you resume or discard.
+          </p>
           <ul id="tx-queue-list" className="tx-queue-list" aria-label="Recent transactions">
             {entries.map((entry) => (
               <TxEntryRow key={entry.id} entry={entry} />

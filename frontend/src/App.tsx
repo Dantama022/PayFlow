@@ -12,6 +12,7 @@ import WalletSelectModal from "./components/WalletSelectModal";
 import WalletBar from "./components/WalletBar";
 import TabBar from "./components/TabBar";
 import ContractPauseBanner from "./components/ContractPauseBanner";
+import NetworkBadge from "./components/NetworkBadge";
 import AdminDashboard from "./pages/AdminDashboard";
 import type { WalletAdapter } from "./services/wallets/WalletAdapter";
 
@@ -21,7 +22,8 @@ export default function App() {
   const { publicKey, connect, disconnect, signAndSubmit, error, connecting, activeAdapter } =
     useWallet();
   const { announcement, announce } = useAccessibility();
-  const { networkMatch, walletNetwork } = useNetworkCheck();
+  const { networkMatch, walletNetwork, isMainnet, requiresMainnetConfirm, confirmMainnet } =
+    useNetworkCheck();
   const { isAdmin } = useAdmin(publicKey);
   const { isPaused } = useContractPaused();
   // Dashboard/SubscribeForm/MerchantDashboard/admin panels each keep their own
@@ -55,13 +57,34 @@ export default function App() {
         {announcement}
       </div>
 
-      {/* Header */}
+      {/* Header — NetworkBadge is persistent in shell so users always see Testnet/Mainnet */}
       <div style={{ marginBottom: 32, textAlign: "center" }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: "#a78bfa" }}>⚡ FlowPay</h1>
         <p style={{ color: "#64748b", marginTop: 6, fontSize: 14 }}>
           Decentralized recurring payments on Stellar
         </p>
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+          <NetworkBadge />
+        </div>
       </div>
+
+      {/* Mainnet safety gate — require explicit confirmation once per session when passphrase is mainnet */}
+      {isMainnet && requiresMainnetConfirm && (
+        <div className="card" style={{ background: "#3b1f1f", borderColor: "#7f1d1d", marginBottom: 16 }}>
+          <p style={{ color: "#fbbf24", fontSize: 13, fontWeight: 600 }}>
+            ⚠ Mainnet mode — real funds at risk. Please confirm you intend to use Mainnet before
+            continuing.
+          </p>
+          <button
+            onClick={confirmMainnet}
+            className="btn-primary"
+            style={{ marginTop: 12 }}
+            data-testid="confirm-mainnet-btn"
+          >
+            I understand, continue on Mainnet
+          </button>
+        </div>
+      )}
 
       {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
       {publicKey && !networkMatch && (

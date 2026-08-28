@@ -310,6 +310,63 @@ export function getDailySpent(user: string): Promise<bigint> {
   });
 }
 
+export function getDayStart(user: string): Promise<bigint | null> {
+  return dedupedCall(`getDayStart:${user}`, async () => {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
+
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_day_start", addressVal(user)))
+      .setTimeout(30)
+      .build();
+
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) throw new Error((result as { error: string }).error);
+
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return null;
+
+    // Contract returns Option<u64> (timestamp of window start). Some deployments may return bool.
+    const type = retval.switch().name;
+    if (type === "scvBool") {
+      return retval.b() ? 1n : null;
+    }
+    try {
+      const decoded = ScValDecoder.decodeOption(retval, ScValDecoder.decodeU64);
+      return decoded;
+    } catch {
+      // Fallback: try direct u64
+      try {
+        return ScValDecoder.decodeU64(retval);
+      } catch {
+        return null;
+      }
+    }
+  });
+}
+
+export interface DailyLimitStatus {
+  limit: bigint | null;
+  spent: bigint;
+  remaining: bigint | null;
+  dayActive: boolean;
+  dayStart: bigint | null;
+}
+
+export async function getDailyLimitStatus(user: string): Promise<DailyLimitStatus> {
+  const [limit, spent, dayStart] = await Promise.all([
+    getDailyLimit(user),
+    getDailySpent(user),
+    getDayStart(user),
+  ]);
+  const dayActive = dayStart !== null;
+  const remaining = limit !== null ? (limit > spent ? limit - spent : 0n) : null;
+  return { limit, spent, remaining, dayActive, dayStart };
+}
+
 export async function buildApproveTx(
   user: string,
   tokenId: string,
