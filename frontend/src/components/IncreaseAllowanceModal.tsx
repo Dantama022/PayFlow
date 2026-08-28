@@ -109,10 +109,7 @@ export default function IncreaseAllowanceModal({
         </p>
         <p>
           Estimated billing cycles with new allowance:{" "}
-          <strong>
-            {Math.floor(Number(amountStroops || 0n) / Number(subscriptionAmount))}
-          </strong>
-          .
+          <strong>{Math.floor(Number(amountStroops || 0n) / Number(subscriptionAmount))}</strong>.
         </p>
         <StroopInput
           label="Total allowance"

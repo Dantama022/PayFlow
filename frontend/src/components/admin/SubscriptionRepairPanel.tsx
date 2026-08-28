@@ -65,7 +65,8 @@ export default function SubscriptionRepairPanel({ adminKey, onSign, gatePassed =
 
   const validationMessages = report ? collectValidationMessages(report) : [];
   const hasFailures = report ? hasValidationFailures(report) : false;
-  const canRepair = isAdmin && gatePassed && hasFailures && !!validatedAddress && repairTx.status !== "pending";
+  const canRepair =
+    isAdmin && gatePassed && hasFailures && !!validatedAddress && repairTx.status !== "pending";
 
   const runValidation = useCallback(async () => {
     const trimmed = userAddress.trim();
