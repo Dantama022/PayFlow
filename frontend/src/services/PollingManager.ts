@@ -11,7 +11,7 @@ interface PollEntry {
   eventName: string;
   address?: string;
   listeners: Set<Listener>;
-  timerId: NodeJS.Timeout | null;
+  timerId: ReturnType<typeof setTimeout> | null;
   currentInterval: number;
   lastEvents: ContractEvent[];
   lastError: string | null;

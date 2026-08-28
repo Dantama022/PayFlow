@@ -1,6 +1,6 @@
-import React, { useState, useEffect, forwardRef, useMemo } from "react";
+import React, { useState, useEffect, forwardRef } from "react";
 import Spinner from "./Spinner";
-import { STROOPS_PER_XLM, MIN_STROOPS, MAX_STROOPS, CONTRACT_LIMITS } from "../constants";
+import { STROOPS_PER_XLM, MIN_STROOPS, CONTRACT_LIMITS } from "../constants";
 import { useDebounce } from "../hooks/useDebounce";
 import { useAmountDisplay } from "../hooks/useAmountDisplay";
 import { type AmountUnit } from "../utils/format";

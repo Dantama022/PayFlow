@@ -20,7 +20,7 @@ export default function App() {
     useWallet();
   const { announcement, announce } = useAccessibility();
   const { networkMatch, walletNetwork } = useNetworkCheck();
-  const { contractId, valid: isContractIdValid, error: contractIdError } = useContractId();
+  const { valid: isContractIdValid, error: contractIdError } = useContractId();
   const { isAdmin } = useAdmin(publicKey);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refresh, setRefresh] = useState(0);
