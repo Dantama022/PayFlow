@@ -823,12 +823,7 @@ export function getTokenBalance(owner: string, tokenId: string): Promise<bigint>
         fee: BASE_FEE,
         networkPassphrase: NETWORK_PASSPHRASE,
       })
-        .addOperation(
-          tokenContract.call(
-            "balance",
-            addressVal(owner)
-          )
-        )
+        .addOperation(tokenContract.call("balance", addressVal(owner)))
         .setTimeout(30)
         .build();
 

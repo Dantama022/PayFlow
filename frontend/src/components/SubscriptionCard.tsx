@@ -356,8 +356,10 @@ export default function SubscriptionCard({
           <h2 className="subscription-card__title">Your Subscription</h2>
           {subscription.label && <p className="subscription-card__label">{subscription.label}</p>}
         </div>
-        <span className={`badge ${active && !paused ? "badge-active" : (paused ? "badge-warning" : "badge-inactive")}`}>
-          {active ? (paused ? "Paused" : (isInTrial ? "Trial Active" : "Active")) : "Cancelled"}
+        <span
+          className={`badge ${active && !paused ? "badge-active" : paused ? "badge-warning" : "badge-inactive"}`}
+        >
+          {active ? (paused ? "Paused" : isInTrial ? "Trial Active" : "Active") : "Cancelled"}
         </span>
       </div>
 
@@ -399,7 +401,9 @@ export default function SubscriptionCard({
           <span className="subscription-row__value">
             {active ? (
               paused ? (
-                <span className="badge badge-warning" aria-label="Subscription is paused">Paused</span>
+                <span className="badge badge-warning" aria-label="Subscription is paused">
+                  Paused
+                </span>
               ) : (
                 <NextChargeCountdown nextChargeTimestamp={nextChargeTimestamp} />
               )

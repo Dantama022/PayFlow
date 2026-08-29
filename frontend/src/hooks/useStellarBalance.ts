@@ -41,7 +41,11 @@ export interface UseStellarBalanceResult {
   error: string | null;
 }
 
-export function useStellarBalance(address: string, staleAfterMs = 10000, tokenId?: string): UseStellarBalanceResult {
+export function useStellarBalance(
+  address: string,
+  staleAfterMs = 10000,
+  tokenId?: string
+): UseStellarBalanceResult {
   const cacheKey = tokenId ? `${address}:${tokenId}` : address;
   const minFetchIntervalMs = 5000;
 

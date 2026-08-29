@@ -9,7 +9,12 @@ interface Props {
   tokenId?: string;
 }
 
-export default function AllowanceDisplay({ userKey, subscriptionAmount, refreshTrigger, tokenId }: Props) {
+export default function AllowanceDisplay({
+  userKey,
+  subscriptionAmount,
+  refreshTrigger,
+  tokenId,
+}: Props) {
   const [allowance, setAllowance] = useState<bigint | null>(null);
   const [loading, setLoading] = useState(true);
 

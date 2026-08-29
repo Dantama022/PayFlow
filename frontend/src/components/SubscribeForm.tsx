@@ -73,7 +73,17 @@ export default function SubscribeForm({
       validate(fields);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on field values + touched
-  }, [merchant, amount, interval, tokenAddress, touched.merchant, touched.amount, touched.interval, touched.tokenAddress, validate]);
+  }, [
+    merchant,
+    amount,
+    interval,
+    tokenAddress,
+    touched.merchant,
+    touched.amount,
+    touched.interval,
+    touched.tokenAddress,
+    validate,
+  ]);
 
   function handleBlur(field: keyof TouchedFields) {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -127,7 +137,8 @@ export default function SubscribeForm({
   const merchantError = touched.merchant && errors.merchant ? errors.merchant : undefined;
   const amountError = touched.amount && errors.amount ? errors.amount : undefined;
   const intervalError = touched.interval && errors.interval ? errors.interval : undefined;
-  const tokenAddressError = touched.tokenAddress && errors.tokenAddress ? errors.tokenAddress : undefined;
+  const tokenAddressError =
+    touched.tokenAddress && errors.tokenAddress ? errors.tokenAddress : undefined;
 
   return (
     <form className="subscribe-form" onSubmit={handleSubmit} noValidate>
@@ -266,7 +277,12 @@ export default function SubscribeForm({
           onChange={(e) => setReferrer(e.target.value)}
           autoComplete="off"
         />
-        <AllowanceDisplay userKey={userKey} subscriptionAmount={BigInt(Math.round(parseFloat(amount || "0") * 10_000_000))} refreshTrigger={0} tokenId={tokenAddress} />
+        <AllowanceDisplay
+          userKey={userKey}
+          subscriptionAmount={BigInt(Math.round(parseFloat(amount || "0") * 10_000_000))}
+          refreshTrigger={0}
+          tokenId={tokenAddress}
+        />
       </div>
 
       <button
