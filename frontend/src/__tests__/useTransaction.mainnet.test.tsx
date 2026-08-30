@@ -1,5 +1,7 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { Mock } from "vitest";
+import { ensureMainnetConfirmed } from "../utils/network";
 
 const mockEnqueueTransaction = vi.fn();
 
@@ -11,39 +13,61 @@ vi.mock("../stellar", () => ({
   },
 }));
 
-// Mock txQueue
+// Mock txQueue — useTransaction also touches the persisted UI entry lifecycle
 vi.mock("../services/txQueue", () => ({
   enqueueTransaction: (...args: unknown[]) => mockEnqueueTransaction(...args),
+  enqueue: vi.fn(() => 1),
+  markSubmitted: vi.fn(),
+  markConfirmed: vi.fn(),
+  markFailed: vi.fn(),
+  setRetry: vi.fn(),
 }));
 
-// Mock rpc health
+// Controllable rpc-health state so the circuit test needs no module resets
+const rpcHealthState = { circuitOpen: false };
 vi.mock("../context/RpcHealthContext", () => ({
-  useRpcHealthContext: () => ({ circuitOpen: false }),
+  useRpcHealthContext: () => rpcHealthState,
 }));
 
-// Mock utils/network for mainnet scenarios via manual mock switching
-vi.mock("../utils/network", async () => {
-  const actual = (await vi.importActual("../utils/network")) as Record<string, unknown>;
+// Partial mock: keep real network utils, override the gate for deterministic tests
+vi.mock("../utils/network", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/network")>();
   return {
     ...actual,
     ensureMainnetConfirmed: vi.fn(() => true),
   };
 });
 
+const ensureMock = ensureMainnetConfirmed as unknown as Mock;
+
+async function submitCaught(
+  result: { current: { submit: (fn: () => Promise<string>) => Promise<string> } },
+  buildAndSign: () => Promise<string> = async () => "hash123"
+): Promise<Error | null> {
+  let caught: Error | null = null;
+  await act(async () => {
+    try {
+      await result.current.submit(buildAndSign);
+    } catch (e) {
+      caught = e as Error;
+    }
+  });
+  return caught;
+}
+
 describe("useTransaction mainnet safety gate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    rpcHealthState.circuitOpen = false;
     mockEnqueueTransaction.mockResolvedValue("hash123");
+    ensureMock.mockReturnValue(true);
   });
   afterEach(() => {
-    vi.clearAllMocks();
     sessionStorage.clear();
   });
 
   it("testnet: does not block and calls enqueueTransaction", async () => {
-    const { ensureMainnetConfirmed } = await import("../utils/network");
-    (ensureMainnetConfirmed as ReturnType<typeof vi.fn>).mockReturnValue(true);
     const { useTransaction } = await import("../hooks/useTransaction");
     const { result } = renderHook(() => useTransaction());
 
@@ -53,73 +77,51 @@ describe("useTransaction mainnet safety gate", () => {
     });
 
     expect(mockEnqueueTransaction).toHaveBeenCalledTimes(1);
-    expect(result.current.status).toBe("success");
+    await waitFor(() => expect(result.current.status).toBe("success"));
   });
 
   it("mainnet: blocks when ensureMainnetConfirmed returns false and sets failed state", async () => {
-    const { ensureMainnetConfirmed } = await import("../utils/network");
-    (ensureMainnetConfirmed as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    ensureMock.mockReturnValue(false);
     const { useTransaction } = await import("../hooks/useTransaction");
     const { result } = renderHook(() => useTransaction());
 
-    await expect(
-      act(async () => {
-        await result.current.submit(async () => "hash123");
-      })
-    ).rejects.toThrow("Mainnet transaction cancelled");
+    const caught = await submitCaught(result);
 
-    expect(result.current.status).toBe("failed");
+    expect(caught?.message).toBe("Mainnet transaction cancelled");
+    await waitFor(() => expect(result.current.status).toBe("failed"));
     expect(result.current.error).toBe("Mainnet transaction cancelled");
     expect(mockEnqueueTransaction).not.toHaveBeenCalled();
   });
 
   it("mainnet: requires confirmation only once per session (second submit skips prompt)", async () => {
-    const networkMod = await import("../utils/network");
-    const ensureMock = networkMod.ensureMainnetConfirmed as ReturnType<typeof vi.fn>;
-    // first call: not confirmed -> prompt shown, user confirms, returns false then true on retry?
-    // Instead simulate: first call returns false (cancelled), second returns true after flag set
-    // For this integration, we test that after failed cancel, next confirm succeeds
+    // First call cancelled, second call confirmed
     ensureMock.mockReturnValueOnce(false).mockReturnValueOnce(true);
     const { useTransaction } = await import("../hooks/useTransaction");
     const { result } = renderHook(() => useTransaction());
 
-    // First attempt cancelled
-    await expect(
-      act(async () => {
-        await result.current.submit(async () => "hash123");
-      })
-    ).rejects.toThrow("Mainnet transaction cancelled");
+    const caught = await submitCaught(result);
+    expect(caught?.message).toBe("Mainnet transaction cancelled");
 
     // Second attempt now confirmed -> succeeds
     await act(async () => {
       await result.current.submit(async () => "hash123");
     });
+
     expect(mockEnqueueTransaction).toHaveBeenCalledTimes(1);
+    expect(ensureMock).toHaveBeenCalledTimes(2);
   });
 
   it("circuitOpen blocks before mainnet check", async () => {
-    vi.resetModules();
-    vi.doMock("../context/RpcHealthContext", () => ({
-      useRpcHealthContext: () => ({ circuitOpen: true }),
-    }));
-    vi.doMock("../stellar", () => ({
-      NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
-      server: { getTransaction: vi.fn().mockResolvedValue({ status: "SUCCESS" }) },
-    }));
-    vi.doMock("../services/txQueue", () => ({
-      enqueueTransaction: vi.fn(),
-    }));
-    vi.doMock("../utils/network", async () => {
-      const actual = (await vi.importActual("../utils/network")) as Record<string, unknown>;
-      return { ...actual, ensureMainnetConfirmed: vi.fn(() => false) };
-    });
-    const { useTransaction: useTxCircuit } = await import("../hooks/useTransaction");
-    const { result } = renderHook(() => useTxCircuit());
-    await expect(
-      act(async () => {
-        await result.current.submit(async () => "hash123");
-      })
-    ).rejects.toThrow("RPC unavailable");
+    rpcHealthState.circuitOpen = true;
+    const { useTransaction } = await import("../hooks/useTransaction");
+    const { result } = renderHook(() => useTransaction());
+
+    const caught = await submitCaught(result);
+
+    expect(caught?.message).toBe("RPC unavailable");
+    await waitFor(() => expect(result.current.status).toBe("failed"));
     expect(result.current.error).toBe("RPC unavailable");
+    expect(ensureMock).not.toHaveBeenCalled();
+    expect(mockEnqueueTransaction).not.toHaveBeenCalled();
   });
 });

@@ -106,7 +106,7 @@ const PayPerUseForm = forwardRef<HTMLInputElement, PayPerUseFormProps>(
     const limitBlocked = remaining !== null && remaining <= 0n;
     const limitError = exceedsRemaining
       ? `Exceeds remaining daily budget (${displayCurrentAmount(remaining!)} remaining).`
-      : limitBlocked && amount
+      : limitBlocked
         ? "Daily limit reached — wait ~24h after first spend or raise limit."
         : null;
 

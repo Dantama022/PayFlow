@@ -141,7 +141,7 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
               className="btn-secondary tx-queue-entry__retry"
               onClick={handleRetry}
               disabled={retrying}
-              aria-label={`Retry ${entry.operation}`}
+              aria-label={`${isInterrupted ? "Resume" : "Retry"} ${entry.operation}`}
               title="Re-simulates before resubmitting to catch allowance/daily-limit errors"
             >
               {retrying ? "Retrying…" : isInterrupted ? "Resume" : "Retry"}

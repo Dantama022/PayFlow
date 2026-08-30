@@ -56,9 +56,12 @@ function loadPersisted(): { entries: TxEntry[]; panelOpen: boolean; nextId: numb
       retry: null,
     }));
     const maxId = restored.reduce((m, e) => Math.max(m, e.id), 0);
+    // Respect an explicit persisted panel state; only auto-open when the key
+    // was never written (legacy/first run with existing entries).
+    const panelOpenRestored = panelRaw === null ? restored.length > 0 : panelRaw === "true";
     return {
       entries: restored.slice(0, MAX_ENTRIES),
-      panelOpen: panelRaw === "true" ? true : restored.length > 0,
+      panelOpen: panelOpenRestored,
       nextId: maxId + 1,
     };
   } catch {
