@@ -23,9 +23,8 @@ describe("TxQueuePanel recovery UX (Issue 052)", () => {
   it("shows interrupted pending entry with resume/discard and double-submit warning", async () => {
     render(<TxQueuePanel />);
 
-    let id: number;
     act(() => {
-      id = txQueue.enqueue("Subscribe", vi.fn().mockResolvedValue(undefined));
+      txQueue.enqueue("Subscribe", vi.fn().mockResolvedValue(undefined));
       // keep as pending with no hash (interrupted)
     });
 

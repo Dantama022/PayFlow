@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { xdr, Address } from "@stellar/stellar-sdk";
+import { xdr, nativeToScVal } from "@stellar/stellar-sdk";
 
 // Mock rpc Server
 const mockSim = vi.fn();
@@ -18,12 +18,9 @@ vi.mock("@stellar/stellar-sdk/rpc", () => ({
 }));
 
 function makeI128ScVal(n: bigint): xdr.ScVal {
-  // Use nativeToScVal to create proper ScVal
-  const { nativeToScVal } = require("@stellar/stellar-sdk");
   return nativeToScVal(n, { type: "i128" });
 }
 function makeOptionI128ScVal(n: bigint | null): xdr.ScVal {
-  const { nativeToScVal, Address } = require("@stellar/stellar-sdk");
   if (n === null) {
     // Option None is ScVal void
     return xdr.ScVal.scvVoid();
@@ -33,7 +30,6 @@ function makeOptionI128ScVal(n: bigint | null): xdr.ScVal {
   return makeI128ScVal(n);
 }
 function makeU64OptionScVal(n: bigint | null): xdr.ScVal {
-  const { nativeToScVal } = require("@stellar/stellar-sdk");
   if (n === null) return xdr.ScVal.scvVoid();
   return nativeToScVal(n, { type: "u64" });
 }

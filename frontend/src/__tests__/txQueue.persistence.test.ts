@@ -51,7 +51,7 @@ describe("txQueue persistence (Issue 052)", () => {
 
   it("retry callback is not persisted (function dropped) but entry remains", () => {
     const retry = vi.fn().mockResolvedValue(undefined);
-    const id = txQueue.enqueue("Subscribe", retry);
+    txQueue.enqueue("Subscribe", retry);
     const entries = txQueue.getEntries();
     expect(entries[0].retry).toBe(retry);
     const raw = localStorage.getItem(txQueue.TX_QUEUE_STORAGE_KEY);

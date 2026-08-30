@@ -2,20 +2,6 @@ import React from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import DailyLimitCard from "../components/DailyLimitCard";
-
-function mockStellar({ limit, spent, dayStart, error }: { limit?: bigint | null; spent?: bigint; dayStart?: bigint | null; error?: string }) {
-  vi.doMock("../stellar", async () => {
-    const actual = (await vi.importActual("../stellar")) as Record<string, unknown>;
-    return {
-      ...actual,
-      getDailyLimit: vi.fn().mockImplementation(() => (error ? Promise.reject(new Error(error)) : Promise.resolve(limit ?? null))),
-      getDailySpent: vi.fn().mockImplementation(() => (error ? Promise.reject(new Error(error)) : Promise.resolve(spent ?? 0n))),
-      getDayStart: vi.fn().mockImplementation(() => (error ? Promise.reject(new Error(error)) : Promise.resolve(dayStart ?? null))),
-    };
-  });
-}
-
 vi.mock("../hooks/useAmountDisplay", () => ({
   useAmountDisplay: () => ({
     displayCurrentAmount: (v: bigint) => `${Number(v) / 10_000_000} XLM`,

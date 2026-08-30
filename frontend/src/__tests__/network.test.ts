@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   isMainnetPassphrase,
-  isMainnetNetwork,
   MAINNET_CONFIRM_KEY,
   isMainnetConfirmed,
   setMainnetConfirmed,

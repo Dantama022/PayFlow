@@ -15,25 +15,6 @@ describe("useNetworkCheck mainnet confirmation (testnet unaffected, mainnet requ
     delete (window as unknown as Record<string, unknown>).freighter;
   });
 
-  function TestHarness() {
-    // Dynamically import to respect mocked stellar
-    const { useNetworkCheck } = require("../hooks/useNetworkCheck");
-    const { isMainnet, isMainnetConfirmed, requiresMainnetConfirm, confirmMainnet, networkMatch, walletNetwork } =
-      useNetworkCheck();
-    return (
-      <div>
-        <span data-testid="isMainnet">{String(isMainnet)}</span>
-        <span data-testid="isMainnetConfirmed">{String(isMainnetConfirmed)}</span>
-        <span data-testid="requiresMainnetConfirm">{String(requiresMainnetConfirm)}</span>
-        <span data-testid="networkMatch">{String(networkMatch)}</span>
-        <span data-testid="walletNetwork">{walletNetwork}</span>
-        <button onClick={confirmMainnet} data-testid="confirm-btn">
-          confirm
-        </button>
-      </div>
-    );
-  }
-
   it("testnet: isMainnet false, requiresMainnetConfirm false", async () => {
     vi.doMock("../stellar", async () => {
       const actual = (await vi.importActual("../stellar")) as Record<string, unknown>;

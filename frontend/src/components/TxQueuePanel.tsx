@@ -58,18 +58,19 @@ interface TxEntryRowProps {
 
 function TxEntryRow({ entry }: TxEntryRowProps) {
   const [retrying, setRetrying] = useState(false);
+  const retryCallback = entry.retry;
 
   const handleRetry = useCallback(async () => {
-    if (!entry.retry) return;
+    if (!retryCallback) return;
     setRetrying(true);
     try {
       // Re-simulation is performed inside the stored retry callback where available.
       // The UI warns about double-submit before invoking it.
-      await entry.retry();
+      await retryCallback();
     } finally {
       setRetrying(false);
     }
-  }, [entry.retry]);
+  }, [retryCallback]);
 
   const handleDiscard = useCallback(() => {
     removeEntry(entry.id);

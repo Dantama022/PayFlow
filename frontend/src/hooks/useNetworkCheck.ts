@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { NETWORK_PASSPHRASE } from "../stellar";
 import {
   isMainnetPassphrase,
-  MAINNET_CONFIRM_KEY,
   isMainnetConfirmed as getMainnetConfirmed,
   setMainnetConfirmed,
 } from "../utils/network";
@@ -67,23 +66,6 @@ export function useNetworkCheck(): NetworkCheckResult {
       cancelled = true;
     };
   }, []);
-
-  // Keep confirmed state in sync with sessionStorage across remounts/storage events
-  useEffect(() => {
-    if (!isMainnet) return;
-    function onStorage(e: StorageEvent) {
-      if (e.key === MAINNET_CONFIRM_KEY) {
-        try {
-          setIsMainnetConfirmed(sessionStorage.getItem(MAINNET_CONFIRM_KEY) === "true");
-        } catch {
-          // ignore
-        }
-      }
-    }
-    // sessionStorage does not fire storage events in same tab, but listen for completeness
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [isMainnet]);
 
   return {
     ...result,
