@@ -183,6 +183,42 @@ check allowances. **The contract now does** (see
 [`docs/API.md`](../docs/API.md#get_batch_charge_estimate)). Treat the header as
 stale; the ABI wins.
 
+### Grace-urgency ordering (default) vs. legacy paging
+
+By default the keeper uses `buildOptimizedBatches()` from `batch-optimizer.ts`,
+which sorts subscribers by **grace-period urgency** (closest to grace expiry
+first) and **overdue age** (most overdue first). This reduces grace lapses
+because urgent subscribers are charged in earlier batches.
+
+To revert to the legacy sequential offset-based paging (charges in subscriber
+index insertion order):
+
+```bash
+KEEPER_USE_LEGACY_PAGING=true tsx keeper.ts
+```
+
+| Mode | Env var | Behavior |
+| --- | --- | --- |
+| **Optimized** (default) | unset | Grace-urgency + overdue sorting via `buildOptimizedBatches()` |
+| **Legacy** | `KEEPER_USE_LEGACY_PAGING=true` | Sequential offset/limit paging through subscriber index |
+
+Both modes emit **lapsed-vs-charged metrics** in cycle logs:
+
+```
+Grace metrics: urgentCharged=12 urgentLapsed=0 normalCharged=45 normalLapsed=1
+```
+
+Dry-run reports (`keeper-dryrun-report-*.json`) include a `pagingMode` field
+(`"optimized"` or `"legacy"`) and a `graceMetrics` object for comparison.
+
+See [`keeper-benchmark.ts`](keeper-benchmark.ts) header for instructions on
+comparing the two modes with dry-run fixtures.
+
+### Debug logging
+
+Set `LOG_LEVEL=debug` to see per-subscriber ordering rationale in the optimized
+path (batch assignment, urgency classification, and deferral decisions).
+
 ### Dry-run report
 
 Every time the keeper completes a cycle in `DRY_RUN=true` mode, it writes a
@@ -449,6 +485,7 @@ keeper Dockerfile. Defaults are from source or `.env.example`.
 | `CONTRACT_ID` | empty; `.env.example` blank | keeper, indexer | Deployed contract ID | Required (validateEnv / indexer exit 1). Metrics header lists it but does not read it. Compose via `.env`. |
 | `KEEPER_SECRET` | empty | keeper | Sign keeper transactions | Required unless `DRY_RUN=true`. Testnet `S…` only in examples. |
 | `KEEPER_PUBLIC_KEY` | `""` | keeper | Source account pubkey | Required by `validateEnv` (including dry-run). **Not** in `.env.example`. |
+| `KEEPER_USE_LEGACY_PAGING` | unset (optimized) | keeper | Use legacy sequential paging | Set `true` to disable grace-urgency ordering. Default uses `buildOptimizedBatches()`. |
 | `DRY_RUN` | unset → live | keeper | Simulation vs live | Only `"true"` enables dry-run. Not in `.env.example`. |
 | `RPC_URL` | `https://soroban-testnet.stellar.org` | keeper, indexer, Dockerfile HEALTHCHECK | Soroban RPC | Compose via `.env`. Metrics header only. |
 | `NETWORK_PASSPHRASE` | `Networks.TESTNET` / `.env.example`: `Test SDF Network ; September 2015` | keeper | Network passphrase | Indexer header only — not read by indexer. |
