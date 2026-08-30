@@ -183,6 +183,42 @@ check allowances. **The contract now does** (see
 [`docs/API.md`](../docs/API.md#get_batch_charge_estimate)). Treat the header as
 stale; the ABI wins.
 
+### Grace-urgency ordering (default) vs. legacy paging
+
+By default the keeper uses `buildOptimizedBatches()` from `batch-optimizer.ts`,
+which sorts subscribers by **grace-period urgency** (closest to grace expiry
+first) and **overdue age** (most overdue first). This reduces grace lapses
+because urgent subscribers are charged in earlier batches.
+
+To revert to the legacy sequential offset-based paging (charges in subscriber
+index insertion order):
+
+```bash
+KEEPER_USE_LEGACY_PAGING=true tsx keeper.ts
+```
+
+| Mode | Env var | Behavior |
+| --- | --- | --- |
+| **Optimized** (default) | unset | Grace-urgency + overdue sorting via `buildOptimizedBatches()` |
+| **Legacy** | `KEEPER_USE_LEGACY_PAGING=true` | Sequential offset/limit paging through subscriber index |
+
+Both modes emit **lapsed-vs-charged metrics** in cycle logs:
+
+```
+Grace metrics: urgentCharged=12 urgentLapsed=0 normalCharged=45 normalLapsed=1
+```
+
+Dry-run reports (`keeper-dryrun-report-*.json`) include a `pagingMode` field
+(`"optimized"` or `"legacy"`) and a `graceMetrics` object for comparison.
+
+See [`keeper-benchmark.ts`](keeper-benchmark.ts) header for instructions on
+comparing the two modes with dry-run fixtures.
+
+### Debug logging
+
+Set `LOG_LEVEL=debug` to see per-subscriber ordering rationale in the optimized
+path (batch assignment, urgency classification, and deferral decisions).
+
 ### Dry-run report
 
 Every time the keeper completes a cycle in `DRY_RUN=true` mode, it writes a
@@ -449,6 +485,7 @@ keeper Dockerfile. Defaults are from source or `.env.example`.
 | `CONTRACT_ID` | empty; `.env.example` blank | keeper, indexer | Deployed contract ID | Required (validateEnv / indexer exit 1). Metrics header lists it but does not read it. Compose via `.env`. |
 | `KEEPER_SECRET` | empty | keeper | Sign keeper transactions | Required unless `DRY_RUN=true`. Testnet `S…` only in examples. |
 | `KEEPER_PUBLIC_KEY` | `""` | keeper | Source account pubkey | Required by `validateEnv` (including dry-run). **Not** in `.env.example`. |
+| `KEEPER_USE_LEGACY_PAGING` | unset (optimized) | keeper | Use legacy sequential paging | Set `true` to disable grace-urgency ordering. Default uses `buildOptimizedBatches()`. |
 | `DRY_RUN` | unset → live | keeper | Simulation vs live | Only `"true"` enables dry-run. Not in `.env.example`. |
 | `RPC_URL` | `https://soroban-testnet.stellar.org` | keeper, indexer, Dockerfile HEALTHCHECK | Soroban RPC | Compose via `.env`. Metrics header only. |
 | `NETWORK_PASSPHRASE` | `Networks.TESTNET` / `.env.example`: `Test SDF Network ; September 2015` | keeper | Network passphrase | Indexer header only — not read by indexer. |
@@ -643,3 +680,39 @@ across all scripts:
 - Mainnet gates: [`docs/MAINNET-DEPLOYMENT.md`](../docs/MAINNET-DEPLOYMENT.md)
 - Keeper handbook: [`docs/KEEPER.md`](../docs/KEEPER.md)
 - Contract API (`batch_charge`, health, estimates): [`docs/API.md`](../docs/API.md)
+## Contract Upgrades (Ops Section)
+
+When upgrading the FlowPay smart contract, it is crucial to ensure that the internal state remains safe and consistent. The \pre-upgrade-check.ts\ tool, along with snapshots and migration scripts, provides a robust automated runbook for safe upgrades.
+
+### Upgrade Runbook
+
+1. **Take a Pre-Upgrade Snapshot**
+   Capture the exact state of all subscriptions before any migration takes place:
+   \\\ash
+   npx tsx scripts/subscription-snapshot.ts --out before-upgrade.json
+   \\\
+
+2. **Run Automated Pre-Upgrade Checks**
+   Verify the schema version, fee configurations, and active_count drift against your snapshot:
+   \\\ash
+   CONTRACT_ID=<C...> npx tsx scripts/pre-upgrade-check.ts \
+     --snapshot before-upgrade.json \
+     --max-drift 0 \
+     --report pre-upgrade-report.json \
+     --wasm ./target/wasm32-unknown-unknown/release/flowpay.wasm
+   \\\
+   - **Schema Version**: Ensures the existing on-chain schema is safe to upgrade to the new version.
+   - **Active Count Drift**: Cross-checks \get_active_count()\ with the snapshot \count\. Fails (CI-like exit code \1\) if the drift exceeds \--max-drift\.
+   - **Fee Config**: Asserts the fee configurations remain intact.
+   - **Report Artifact**: A \pre-upgrade-report.json\ file is generated, which can be saved in CI artifacts.
+
+3. **Migrate the Contract**
+   If \pre-upgrade-check.ts\ passes successfully, proceed with the actual WASM upgrade and migration step (e.g. via \migrate-contract.ts\).
+
+4. **Verify Post-Upgrade State**
+   Take another snapshot and compare the differences:
+   \\\ash
+   npx tsx scripts/subscription-snapshot.ts --out after-upgrade.json
+   npx tsx scripts/snapshot-diff.ts before-upgrade.json after-upgrade.json
+   \\\
+   This will fail with an exit code \1\ if unexpected changes occurred.

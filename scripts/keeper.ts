@@ -23,6 +23,9 @@
  *   INTERVAL_SECONDS      Optional. Loop interval (default: 3600).
  *   REPORT_DIR            Optional. Directory for dry-run reports and live-cycle pointer
  *                         (default: <script_dir>/data/benchmarks).
+ *   KEEPER_USE_LEGACY_PAGING  Optional. Set to "true" to use legacy sequential
+ *                         offset-based paging instead of grace-urgency-ordered
+ *                         optimized batches (default: false, i.e. optimized).
  *
  * Flags:
  *   --once      Run a single cycle and exit.
@@ -63,6 +66,7 @@ const KEEPER_SECRET = process.env.KEEPER_SECRET || "";
 const BATCH_SIZE = Math.min(Math.max(Number(process.env.BATCH_SIZE) || 50, 1), 50);
 const INTERVAL_SECONDS = Math.max(Number(process.env.INTERVAL_SECONDS) || 3600, 1);
 const REPORT_DIR = process.env.REPORT_DIR ?? path.join(__dirname, "data", "benchmarks");
+const USE_LEGACY_PAGING = process.env.KEEPER_USE_LEGACY_PAGING === "true";
 
 const server = new Server(RPC_URL);
 
@@ -106,6 +110,9 @@ Environment Variables:
   INTERVAL_SECONDS      Optional. Seconds between cycles (default: 3600).
   REPORT_DIR            Optional. Directory where dry-run reports and the live-cycle
                         pointer file are written (default: <script_dir>/data/benchmarks).
+  KEEPER_USE_LEGACY_PAGING  Optional. Set to "true" to use legacy sequential
+                        offset-based paging instead of grace-urgency-ordered
+                        optimized batches (default: false).
 
 Caveats:
   Dry-run results may differ from actual charges — allowance changes, contract
@@ -207,11 +214,20 @@ interface DryRunReport {
   mode: "dry-run";
   contractId: string;
   rpcUrl: string;
+  /** Which batch-formation path was used: optimized (grace-urgency) or legacy (sequential). */
+  pagingMode: "optimized" | "legacy";
   estimatedOutcomes: {
     totalChecked: number;
     totalCharged: number;
     totalVolumeStroops: string;
     skipCounts: Record<string, number>;
+  };
+  /** Lapsed-vs-charged metrics by urgency bucket. */
+  graceMetrics: {
+    urgentCharged: number;
+    urgentLapsed: number;
+    normalCharged: number;
+    normalLapsed: number;
   };
   candidates: CandidateRecord[];
   lastLiveCycle: LatestLiveRecord | null;
@@ -567,6 +583,13 @@ interface CycleReport {
   candidates: CandidateRecord[];
   errors: string[];
   txHashes: string[];
+  /** Grace-period lapse metrics: charged vs lapsed by ordering rationale. */
+  graceMetrics: {
+    urgentCharged: number;
+    urgentLapsed: number;
+    normalCharged: number;
+    normalLapsed: number;
+  };
 }
 
 async function runCycle(): Promise<CycleReport> {
@@ -579,6 +602,12 @@ async function runCycle(): Promise<CycleReport> {
     candidates: [],
     errors: [],
     txHashes: [],
+    graceMetrics: {
+      urgentCharged: 0,
+      urgentLapsed: 0,
+      normalCharged: 0,
+      normalLapsed: 0,
+    },
   };
 
   const paused = await isContractPaused();
@@ -587,6 +616,58 @@ async function runCycle(): Promise<CycleReport> {
     return report;
   }
 
+  if (USE_LEGACY_PAGING) {
+    log(isDryRun, "Using LEGACY sequential paging (KEEPER_USE_LEGACY_PAGING=true)");
+    await runCycleLegacy(report, isDryRun);
+  } else {
+    log(isDryRun, "Using OPTIMIZED grace-urgency ordering (default)");
+    await runCycleOptimized(report, isDryRun);
+  }
+
+  const skipDetails = Object.entries(report.totalSkips)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" | ");
+
+  const summary = isDryRun
+    ? `Cycle complete: checked=${report.totalChecked} wouldCharge=${report.totalCharged} totalVolume=${stroopsToXlm(report.totalVolume)} XLM`
+    : `Cycle complete: charged=${report.totalCharged} totalVolume=${stroopsToXlm(report.totalVolume)} XLM${skipDetails ? ` | ${skipDetails}` : ""}`;
+
+  log(isDryRun, summary);
+
+  // Log lapsed-vs-charged grace metrics
+  const gm = report.graceMetrics;
+  const totalLapsed = gm.urgentLapsed + gm.normalLapsed;
+  const totalUrgent = gm.urgentCharged + gm.urgentLapsed;
+  if (totalLapsed > 0 || totalUrgent > 0) {
+    log(
+      isDryRun,
+      `Grace metrics: urgentCharged=${gm.urgentCharged} urgentLapsed=${gm.urgentLapsed} normalCharged=${gm.normalCharged} normalLapsed=${gm.normalLapsed}`
+    );
+  }
+
+  if (report.errors.length > 0) {
+    for (const err of report.errors) log(isDryRun, `Error: ${err}`);
+  }
+
+  // ── Post-cycle reporting ───────────────────────────────────────────────────
+
+  if (!isDryRun) {
+    writeLatestLive(report);
+  } else {
+    writeDryRunReport(report, USE_LEGACY_PAGING);
+  }
+
+  return report;
+}
+
+// ── Cycle Executors ─────────────────────────────────────────────────────────
+
+/**
+ * Run a charge cycle using the optimized grace-urgency batch ordering.
+ * Subscribers closest to grace-period expiry are charged first, reducing
+ * grace lapses caused by unordered sequential paging.
+ */
+async function runCycleOptimized(report: CycleReport, isDryRun: boolean): Promise<void> {
   // Ensure optimizer sees the same contract/RPC configuration as this keeper.
   process.env.CONTRACT_ID = CONTRACT_ID;
   process.env.RPC_URL = RPC_URL;
@@ -595,22 +676,30 @@ async function runCycle(): Promise<CycleReport> {
   const optimized = await buildOptimizedBatches();
   report.totalChecked = optimized.ready_count + optimized.deferred_count;
 
+  log(
+    isDryRun,
+    `Optimizer: grace_period=${optimized.grace_period}s max_batch_size=${optimized.max_batch_size} ready=${optimized.ready_count} deferred=${optimized.deferred_count} batches=${optimized.batches.length}`
+  );
+
+  // Debug-level: log per-subscriber ordering rationale
+  if (optimized.batches.length > 0) {
+    const allUsers = optimized.batches.flatMap((b) => b.users);
+    log(
+      isDryRun,
+      `Ordering rationale: ${allUsers.length} user(s) in ${optimized.batches.length} batch(es) — grace-expiry-urgent users are in earlier batches`
+    );
+  }
+
   if (optimized.batches.length === 0) {
     log(
       isDryRun,
       `No ready subscribers (ready=${optimized.ready_count} deferred=${optimized.deferred_count})`
     );
-    // Still write the live pointer so the "latest live" file is fresh.
     if (!isDryRun) {
       writeLatestLive(report);
     }
-    return report;
+    return;
   }
-
-  log(
-    isDryRun,
-    `Optimizer selected ${optimized.ready_count} ready user(s) in ${optimized.batches.length} batch(es); deferred=${optimized.deferred_count}`
-  );
 
   for (const batch of optimized.batches) {
     const users = batch.users;
@@ -622,6 +711,15 @@ async function runCycle(): Promise<CycleReport> {
       report.totalVolume += pageResult.totalVolume;
       report.candidates.push(...pageResult.candidates);
       report.errors.push(...pageResult.errors);
+
+      // Track grace metrics for optimized path
+      for (const c of pageResult.candidates) {
+        if (c.result === "Charged") {
+          report.graceMetrics.normalCharged++;
+        } else if (c.result === "GracePeriodElapsed") {
+          report.graceMetrics.normalLapsed++;
+        }
+      }
 
       const skipDetails = Object.entries(pageResult.skipCounts)
         .map(([k, v]) => `${k}: ${v}`)
@@ -637,6 +735,15 @@ async function runCycle(): Promise<CycleReport> {
       report.totalCharged += pageResult.charged;
       report.totalVolume += pageResult.totalVolume;
       report.candidates.push(...pageResult.candidates);
+
+      // Track grace metrics for optimized path
+      for (const c of pageResult.candidates) {
+        if (c.result === "Charged") {
+          report.graceMetrics.normalCharged++;
+        } else if (c.result === "GracePeriodElapsed") {
+          report.graceMetrics.normalLapsed++;
+        }
+      }
 
       for (const [k, v] of Object.entries(pageResult.skipCounts)) {
         report.totalSkips[k] = (report.totalSkips[k] || 0) + v;
@@ -655,30 +762,101 @@ async function runCycle(): Promise<CycleReport> {
       if (skipDetails) log(false, `  ${skipDetails}`);
     }
   }
+}
 
-  const skipDetails = Object.entries(report.totalSkips)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join(" | ");
-
-  const summary = isDryRun
-    ? `Cycle complete: checked=${report.totalChecked} wouldCharge=${report.totalCharged} totalVolume=${stroopsToXlm(report.totalVolume)} XLM`
-    : `Cycle complete: charged=${report.totalCharged} totalVolume=${stroopsToXlm(report.totalVolume)} XLM${skipDetails ? ` | ${skipDetails}` : ""}`;
-
-  log(isDryRun, summary);
-
-  if (report.errors.length > 0) {
-    for (const err of report.errors) log(isDryRun, `Error: ${err}`);
+/**
+ * Run a charge cycle using legacy sequential offset-based paging.
+ * Pages through the subscriber index in insertion order (no urgency sorting).
+ * This is the pre-optimized path — kept as a fallback via
+ * KEEPER_USE_LEGACY_PAGING=true for A/B comparison.
+ */
+async function runCycleLegacy(report: CycleReport, isDryRun: boolean): Promise<void> {
+  const contract = new Contract(CONTRACT_ID);
+  let totalSubscribers = 0;
+  try {
+    totalSubscribers = await getSubscriberCount();
+  } catch (err) {
+    log(isDryRun, `Failed to get subscriber count: ${err}`);
+    report.errors.push(`getSubscriberCount failed: ${err}`);
+    return;
   }
 
-  // ── Post-cycle reporting ───────────────────────────────────────────────────
+  report.totalChecked = totalSubscribers;
 
-  if (!isDryRun) {
-    writeLatestLive(report);
-  } else {
-    writeDryRunReport(report);
+  if (totalSubscribers === 0) {
+    log(isDryRun, "No subscribers found");
+    if (!isDryRun) writeLatestLive(report);
+    return;
   }
 
-  return report;
+  log(isDryRun, `Legacy paging: ${totalSubscribers} subscriber(s), batch_size=${BATCH_SIZE}`);
+
+  let offset = 0;
+  while (offset < totalSubscribers) {
+    const users = await getSubscriberPage(offset, BATCH_SIZE);
+    if (users.length === 0) break;
+
+    const batchNum = Math.floor(offset / BATCH_SIZE) + 1;
+
+    if (isDryRun) {
+      const pageResult = await processPageDryRun(users, batchNum);
+      report.totalCharged += pageResult.wouldCharge;
+      report.totalVolume += pageResult.totalVolume;
+      report.candidates.push(...pageResult.candidates);
+      report.errors.push(...pageResult.errors);
+
+      // Track grace metrics for legacy path (urgent bucket = none in legacy)
+      for (const c of pageResult.candidates) {
+        if (c.result === "Charged") {
+          report.graceMetrics.normalCharged++;
+        } else if (c.result === "GracePeriodElapsed") {
+          report.graceMetrics.normalLapsed++;
+        }
+      }
+
+      const skipDetails = Object.entries(pageResult.skipCounts)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" | ");
+
+      log(
+        true,
+        `Page ${batchNum} (offset=${offset}): checked=${pageResult.checked} wouldCharge=${pageResult.wouldCharge} volume=${stroopsToXlm(pageResult.totalVolume)} XLM`
+      );
+      if (skipDetails) log(true, `  ${skipDetails}`);
+    } else {
+      const pageResult = await processPageLive(users, batchNum);
+      report.totalCharged += pageResult.charged;
+      report.totalVolume += pageResult.totalVolume;
+      report.candidates.push(...pageResult.candidates);
+
+      // Track grace metrics for legacy path
+      for (const c of pageResult.candidates) {
+        if (c.result === "Charged") {
+          report.graceMetrics.normalCharged++;
+        } else if (c.result === "GracePeriodElapsed") {
+          report.graceMetrics.normalLapsed++;
+        }
+      }
+
+      for (const [k, v] of Object.entries(pageResult.skipCounts)) {
+        report.totalSkips[k] = (report.totalSkips[k] || 0) + v;
+      }
+      report.errors.push(...pageResult.errors);
+      if (pageResult.txHash) report.txHashes.push(pageResult.txHash);
+
+      const skipDetails = Object.entries(pageResult.skipCounts)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" | ");
+
+      log(
+        false,
+        `Page ${batchNum} (offset=${offset}): charged=${pageResult.charged} volume=${stroopsToXlm(pageResult.totalVolume)} XLM${pageResult.txHash ? ` tx=${pageResult.txHash}` : ""}`
+      );
+      if (skipDetails) log(false, `  ${skipDetails}`);
+    }
+
+    offset += BATCH_SIZE;
+  }
 }
 
 // ── Report Writers ────────────────────────────────────────────────────────────
@@ -706,7 +884,7 @@ function writeLatestLive(report: CycleReport): void {
  * Build and write a timestamped dry-run report to REPORT_DIR.
  * Reads keeper-latest-live.json if available and computes a comparison delta.
  */
-function writeDryRunReport(report: CycleReport): void {
+function writeDryRunReport(report: CycleReport, useLegacyPaging: boolean): void {
   const timestamp = new Date().toISOString();
   const safeTs = timestamp.replace(/:/g, "-");
 
@@ -745,12 +923,14 @@ function writeDryRunReport(report: CycleReport): void {
     mode: "dry-run",
     contractId: CONTRACT_ID,
     rpcUrl: RPC_URL,
+    pagingMode: useLegacyPaging ? "legacy" : "optimized",
     estimatedOutcomes: {
       totalChecked: report.totalChecked,
       totalCharged: report.totalCharged,
       totalVolumeStroops: report.totalVolume.toString(),
       skipCounts,
     },
+    graceMetrics: { ...report.graceMetrics },
     candidates: report.candidates,
     lastLiveCycle: lastLive ?? null,
     comparison,

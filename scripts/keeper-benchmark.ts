@@ -4,10 +4,30 @@
  * Measures batch_charge throughput and gas/CPU overhead across standard batch sizes:
  * 10, 25, 50, 100, 200.
  *
- * Usage:
+ * ## Grace Urgency Ordering Benchmarks
+ *
+ * The keeper now defaults to grace-urgency-ordered batches via
+ * `buildOptimizedBatches()` from `batch-optimizer.ts`. This benchmark
+ * measures raw `batch_charge` throughput independent of ordering strategy.
+ *
+ * To compare legacy vs. optimized ordering:
+ *   1. Run the keeper in dry-run mode with legacy paging:
+ *        KEEPER_USE_LEGACY_PAGING=true DRY_RUN=true tsx keeper.ts --once
+ *   2. Run the keeper in dry-run mode with optimized ordering (default):
+ *        DRY_RUN=true tsx keeper.ts --once
+ *   3. Compare the `graceMetrics` in the dry-run reports:
+ *        data/benchmarks/keeper-dryrun-report-*.json
+ *
+ * The optimized path charges grace-expiry-urgent subscribers first, reducing
+ * `GracePeriodElapsed` results. Legacy sequential paging charges in insertion
+ * order, which may skip urgent subscribers until later pages.
+ *
+ * ## Usage
+ *
  *   npx tsx scripts/keeper-benchmark.ts [--simulate] [--rpc-url <url>]
  *
- * Environment Variables:
+ * ## Environment Variables
+ *
  *   RPC_URL / VITE_RPC_URL             — Soroban RPC endpoint
  *   NETWORK_PASSPHRASE                 — Network passphrase (default: Testnet)
  *   CONTRACT_ID / VITE_CONTRACT_ID     — Deployed contract ID
