@@ -42,7 +42,8 @@
 
 import fs from "fs";
 import path from "path";
-import { Server, assembleTransaction } from "@stellar/stellar-sdk/rpc";
+import { assembleTransaction } from "@stellar/stellar-sdk/rpc";
+import { MultiEndpointServer } from "./rpc-client.js";
 import { buildOptimizedBatches } from "./batch-optimizer";
 import {
   Address,
@@ -68,7 +69,7 @@ const INTERVAL_SECONDS = Math.max(Number(process.env.INTERVAL_SECONDS) || 3600, 
 const REPORT_DIR = process.env.REPORT_DIR ?? path.join(__dirname, "data", "benchmarks");
 const USE_LEGACY_PAGING = process.env.KEEPER_USE_LEGACY_PAGING === "true";
 
-const server = new Server(RPC_URL);
+const server = new MultiEndpointServer();
 
 // ── Validation ───────────────────────────────────────────────────────────────
 
