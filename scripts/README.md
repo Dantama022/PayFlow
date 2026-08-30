@@ -643,3 +643,39 @@ across all scripts:
 - Mainnet gates: [`docs/MAINNET-DEPLOYMENT.md`](../docs/MAINNET-DEPLOYMENT.md)
 - Keeper handbook: [`docs/KEEPER.md`](../docs/KEEPER.md)
 - Contract API (`batch_charge`, health, estimates): [`docs/API.md`](../docs/API.md)
+## Contract Upgrades (Ops Section)
+
+When upgrading the FlowPay smart contract, it is crucial to ensure that the internal state remains safe and consistent. The \pre-upgrade-check.ts\ tool, along with snapshots and migration scripts, provides a robust automated runbook for safe upgrades.
+
+### Upgrade Runbook
+
+1. **Take a Pre-Upgrade Snapshot**
+   Capture the exact state of all subscriptions before any migration takes place:
+   \\\ash
+   npx tsx scripts/subscription-snapshot.ts --out before-upgrade.json
+   \\\
+
+2. **Run Automated Pre-Upgrade Checks**
+   Verify the schema version, fee configurations, and active_count drift against your snapshot:
+   \\\ash
+   CONTRACT_ID=<C...> npx tsx scripts/pre-upgrade-check.ts \
+     --snapshot before-upgrade.json \
+     --max-drift 0 \
+     --report pre-upgrade-report.json \
+     --wasm ./target/wasm32-unknown-unknown/release/flowpay.wasm
+   \\\
+   - **Schema Version**: Ensures the existing on-chain schema is safe to upgrade to the new version.
+   - **Active Count Drift**: Cross-checks \get_active_count()\ with the snapshot \count\. Fails (CI-like exit code \1\) if the drift exceeds \--max-drift\.
+   - **Fee Config**: Asserts the fee configurations remain intact.
+   - **Report Artifact**: A \pre-upgrade-report.json\ file is generated, which can be saved in CI artifacts.
+
+3. **Migrate the Contract**
+   If \pre-upgrade-check.ts\ passes successfully, proceed with the actual WASM upgrade and migration step (e.g. via \migrate-contract.ts\).
+
+4. **Verify Post-Upgrade State**
+   Take another snapshot and compare the differences:
+   \\\ash
+   npx tsx scripts/subscription-snapshot.ts --out after-upgrade.json
+   npx tsx scripts/snapshot-diff.ts before-upgrade.json after-upgrade.json
+   \\\
+   This will fail with an exit code \1\ if unexpected changes occurred.
