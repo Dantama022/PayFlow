@@ -59,6 +59,10 @@ interface DeploymentManifest {
     merchants: boolean;
   };
   lastUpdatedAt: string;
+  tokenAddress?: string;
+  adminAddress?: string;
+  rpcUrl?: string;
+  networkPassphrase?: string;
 }
 
 const CONFIG_PATH = projectPath("deployments", "config.json");
@@ -102,6 +106,10 @@ function defaultManifest(config: DeploymentConfig): DeploymentManifest {
       merchants: false,
     },
     lastUpdatedAt: new Date().toISOString(),
+    tokenAddress: config.tokenAddress,
+    adminAddress: config.adminAddress,
+    rpcUrl: config.rpcUrl,
+    networkPassphrase: config.networkPassphrase,
   };
 }
 

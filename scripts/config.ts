@@ -89,6 +89,17 @@ export const ConfigSchema = z.object({
     .url("WEBHOOK_URL must be a valid URL with http:// or https:// protocol")
     .optional(),
 
+  /** Secret used to generate HMAC-SHA256 signature for webhooks */
+  WEBHOOK_SECRET: z
+    .string()
+    .min(1, "WEBHOOK_SECRET must not be empty if provided")
+    .optional(),
+
+  /** Optional file path for the Dead Letter Queue for failed webhooks */
+  WEBHOOK_DLQ_FILE: z
+    .string()
+    .optional(),
+
   /** Optional network passphrase for Stellar network identification */
   NETWORK_PASSPHRASE: z
     .string()
@@ -97,6 +108,36 @@ export const ConfigSchema = z.object({
 
 /** Inferred TypeScript type from ConfigSchema */
 export type KeeperConfig = z.infer<typeof ConfigSchema>;
+
+// ── Manifest schema ──────────────────────────────────────────────────────────
+
+export const ManifestSchema = z.object({
+  contractId: z
+    .string({ required_error: "contractId is required in manifest" })
+    .regex(contractIdRegex, "contractId must be a valid Stellar contract ID"),
+
+  tokenAddress: z
+    .string({ required_error: "tokenAddress is required in manifest" })
+    .min(1, "tokenAddress must not be empty"),
+
+  adminAddress: z
+    .string({ required_error: "adminAddress is required in manifest" })
+    .min(1, "adminAddress must not be empty"),
+
+  network: z
+    .string({ required_error: "network is required in manifest" })
+    .min(1, "network must not be empty"),
+
+  rpcUrl: z
+    .string({ required_error: "rpcUrl is required in manifest" })
+    .url("rpcUrl must be a valid URL"),
+
+  networkPassphrase: z
+    .string({ required_error: "networkPassphrase is required in manifest" })
+    .min(1, "networkPassphrase must not be empty"),
+});
+
+export type ValidatedManifest = z.infer<typeof ManifestSchema>;
 
 // ── Validation helpers ───────────────────────────────────────────────────────
 
