@@ -811,6 +811,39 @@ export async function getBalance(
   }
 }
 
+export function getTokenBalance(owner: string, tokenId: string): Promise<bigint> {
+  if (!tokenId) return Promise.reject(new Error("Token ID is required."));
+
+  return dedupedCall(`getTokenBalance:${owner}:${tokenId}`, async () => {
+    try {
+      const tokenContract = new Contract(tokenId);
+      const account = await server.getAccount(owner);
+
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(tokenContract.call("balance", addressVal(owner)))
+        .setTimeout(30)
+        .build();
+
+      const result = await server.simulateTransaction(tx);
+      if ("error" in result) return 0n;
+
+      const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+      if (!retval) return 0n;
+
+      try {
+        return ScValDecoder.decodeI128(retval);
+      } catch {
+        return 0n;
+      }
+    } catch {
+      return 0n;
+    }
+  });
+}
+
 export function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): Promise<bigint> {
   if (!tokenId) return Promise.reject(new Error("VITE_TOKEN_CONTRACT_ID is not configured."));
 
