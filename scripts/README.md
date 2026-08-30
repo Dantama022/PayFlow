@@ -548,13 +548,69 @@ Exits with code `1` if any allowances are expiring soon.
 
 ### health-check
 
-Shallow contract responsiveness check (`get_schema_version` + `get_active_count`).
-Not a substitute for on-chain `contract_health_check`. See
-[`docs/MAINNET-DEPLOYMENT.md`](../docs/MAINNET-DEPLOYMENT.md#3-health).
+Contract health check with **shallow** and **deep** modes.
+See [`docs/MAINNET-DEPLOYMENT.md`](../docs/MAINNET-DEPLOYMENT.md#3-health).
+
+**Shallow mode** (default): calls `get_schema_version` + `get_active_count`.
+Suitable for Docker health checks and lightweight cron monitoring.
+
+**Deep mode** (`--deep` flag or `HEALTH_DEEP=true`):
+1. Calls `contract_health_check()` to obtain a full `HealthReport` and validates
+   critical invariants: contract not paused, token and admin configured,
+   instance TTL above threshold.
+2. Calls `get_batch_charge_estimate` with an empty address list to verify the
+   charge path is responsive (catches schema drift, RPC decode errors,
+   paused-contract state that shallow probes miss).
+3. Exits non-zero on any failed invariant.
+
+**JSON output** (`--json`): writes structured JSON to stdout instead of
+human-readable log lines. Useful for CI pipelines and log aggregation.
 
 ```bash
+# Shallow (default)
 CONTRACT_ID=C... tsx health-check.ts
-# exit 0 = healthy, exit 1 = unhealthy
+
+# Deep checks
+CONTRACT_ID=C... tsx health-check.ts --deep
+
+# JSON output
+CONTRACT_ID=C... tsx health-check.ts --json
+
+# Deep + JSON
+CONTRACT_ID=C... tsx health-check.ts --deep --json
+
+# Deep via env var (no --deep flag needed)
+CONTRACT_ID=C... HEALTH_DEEP=true tsx health-check.ts
+```
+
+Exit codes:
+- `0` — healthy (all probes passed, no invariant violations)
+- `1` — unhealthy (probe failure, paused contract, or failed invariant)
+
+Environment variables:
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `CONTRACT_ID` | yes | — | FlowPay contract ID |
+| `RPC_URL` | no | `https://soroban-testnet.stellar.org` | Soroban RPC endpoint |
+| `NETWORK` | no | `testnet` | Set `mainnet` for public network |
+| `HEALTH_DEEP` | no | `false` | Set `true` to enable deep checks |
+
+JSON output shape:
+```json
+{
+  "status": "healthy|unhealthy",
+  "mode": "shallow|deep",
+  "contract": "C...",
+  "timestamp": "2026-08-30T...",
+  "probes": [
+    { "name": "get_schema_version", "ok": true, "detail": "..." },
+    { "name": "get_active_count", "ok": true, "detail": "..." },
+    { "name": "contract_health_check", "ok": true, "detail": "all invariants pass", "data": {...} },
+    { "name": "get_batch_charge_estimate", "ok": true, "detail": "empty list accepted, charge path responsive" }
+  ],
+  "healthReport": { ... },
+  "batchEstimate": "..."
+}
 ```
 
 ---
