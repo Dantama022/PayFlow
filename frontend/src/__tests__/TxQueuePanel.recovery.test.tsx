@@ -55,7 +55,9 @@ describe("TxQueuePanel recovery UX (Issue 052)", () => {
     act(() => {
       txQueue.enqueue("Pay Per Use", retry);
     });
-    await waitFor(() => expect(screen.getByRole("button", { name: /resume pay per use/i })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /resume pay per use/i })).toBeInTheDocument()
+    );
     await userEvent.click(screen.getByRole("button", { name: /resume pay per use/i }));
     await waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
   });
@@ -77,7 +79,14 @@ describe("TxQueuePanel recovery UX (Issue 052)", () => {
 
   it("pending items survive reload: pre-populated localStorage renders on mount", async () => {
     const persisted = [
-      { id: 42, operation: "Subscribe", hash: null, timestamp: new Date().toISOString(), status: "pending", error: null },
+      {
+        id: 42,
+        operation: "Subscribe",
+        hash: null,
+        timestamp: new Date().toISOString(),
+        status: "pending",
+        error: null,
+      },
     ];
     localStorage.setItem(txQueue.TX_QUEUE_STORAGE_KEY, JSON.stringify(persisted));
     localStorage.setItem(txQueue.TX_PANEL_STORAGE_KEY, "true");

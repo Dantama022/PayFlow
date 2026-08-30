@@ -55,10 +55,7 @@ export function dailyLimitProgress(spent: bigint, limit: bigint | null): number 
 /**
  * Whether a pay-per-use amount would exceed the remaining daily budget.
  */
-export function exceedsRemaining(
-  amount: bigint | null,
-  remaining: bigint | null
-): boolean {
+export function exceedsRemaining(amount: bigint | null, remaining: bigint | null): boolean {
   if (amount === null || remaining === null) return false;
   return amount > remaining;
 }

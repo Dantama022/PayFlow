@@ -96,7 +96,9 @@ describe("stellar daily limit helpers (Issue 050)", () => {
       .mockResolvedValueOnce({ result: { retval: makeI128ScVal(70_000_000n) } } as never)
       .mockResolvedValueOnce({ result: { retval: makeU64OptionScVal(999n) } } as never);
     const { getDailyLimitStatus } = await import("../stellar");
-    const status = await getDailyLimitStatus("GTUV0000000000000000000000000000000000000000000000000000");
+    const status = await getDailyLimitStatus(
+      "GTUV0000000000000000000000000000000000000000000000000000"
+    );
     expect(status.limit).toBe(100_000_000n);
     expect(status.spent).toBe(70_000_000n);
     expect(status.remaining).toBe(30_000_000n);

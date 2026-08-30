@@ -36,7 +36,12 @@ export function useNetworkCheck(): NetworkCheckResult {
     setIsMainnetConfirmed(true);
   }, []);
 
-  const [result, setResult] = useState<Omit<NetworkCheckResult, "isMainnet" | "isMainnetConfirmed" | "requiresMainnetConfirm" | "confirmMainnet">>({
+  const [result, setResult] = useState<
+    Omit<
+      NetworkCheckResult,
+      "isMainnet" | "isMainnetConfirmed" | "requiresMainnetConfirm" | "confirmMainnet"
+    >
+  >({
     networkMatch: true, // optimistic default — no false warning before check completes
     walletNetwork: "",
   });

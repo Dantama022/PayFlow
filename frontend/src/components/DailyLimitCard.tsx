@@ -46,8 +46,10 @@ export default function DailyLimitCard({ userKey, refreshTrigger, onOpen }: Prop
 
   const remaining = dailyLimit !== null && dailySpent !== null ? dailyLimit - dailySpent : null;
   const dayActive = dayStart !== null;
-  const progress = dailyLimit !== null && dailySpent !== null ? dailyLimitProgress(dailySpent, dailyLimit) : 0;
-  const isUncappedWithWindow = dailyLimit === null && dayActive && dailySpent !== null && dailySpent > 0n;
+  const progress =
+    dailyLimit !== null && dailySpent !== null ? dailyLimitProgress(dailySpent, dailyLimit) : 0;
+  const isUncappedWithWindow =
+    dailyLimit === null && dayActive && dailySpent !== null && dailySpent > 0n;
 
   if (loading) {
     return (
@@ -100,7 +102,10 @@ export default function DailyLimitCard({ userKey, refreshTrigger, onOpen }: Prop
                   : "—"
               }
             />
-            <Row label="Day window" value={dayActive ? "Active — resets ~24h after first spend" : "Inactive"} />
+            <Row
+              label="Day window"
+              value={dayActive ? "Active — resets ~24h after first spend" : "Inactive"}
+            />
           </div>
 
           {dailyLimit !== null && dailySpent !== null && (
@@ -122,20 +127,29 @@ export default function DailyLimitCard({ userKey, refreshTrigger, onOpen }: Prop
                   style={{
                     width: `${progress}%`,
                     height: "100%",
-                    background: progress >= 100 ? "var(--color-danger)" : progress >= 80 ? "#f59e0b" : "var(--color-primary)",
+                    background:
+                      progress >= 100
+                        ? "var(--color-danger)"
+                        : progress >= 80
+                          ? "#f59e0b"
+                          : "var(--color-primary)",
                     transition: "width 0.2s ease",
                   }}
                 />
               </div>
               <p className="text-xs text-muted" style={{ marginTop: 6 }}>
-                {progress}% used — {dayActive ? "Resets about 24 hours after your first spend today." : "Window starts on first pay-per-use."}
+                {progress}% used —{" "}
+                {dayActive
+                  ? "Resets about 24 hours after your first spend today."
+                  : "Window starts on first pay-per-use."}
               </p>
             </div>
           )}
 
           {isUncappedWithWindow && (
             <p className="text-xs" style={{ marginTop: 8, color: "#f59e0b" }} role="status">
-              Limit expired but window still active — spending is currently uncapped until you set a new limit.
+              Limit expired but window still active — spending is currently uncapped until you set a
+              new limit.
             </p>
           )}
 

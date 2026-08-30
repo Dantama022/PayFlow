@@ -69,14 +69,16 @@ function loadPersisted(): { entries: TxEntry[]; panelOpen: boolean; nextId: numb
 function persist() {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
-    const toPersist: PersistedTxEntry[] = entries.map(({ id, operation, hash, timestamp, status, error }) => ({
-      id,
-      operation,
-      hash,
-      timestamp,
-      status,
-      error,
-    }));
+    const toPersist: PersistedTxEntry[] = entries.map(
+      ({ id, operation, hash, timestamp, status, error }) => ({
+        id,
+        operation,
+        hash,
+        timestamp,
+        status,
+        error,
+      })
+    );
     window.localStorage.setItem(TX_QUEUE_STORAGE_KEY, JSON.stringify(toPersist));
     window.localStorage.setItem(TX_PANEL_STORAGE_KEY, JSON.stringify(panelOpen));
   } catch {

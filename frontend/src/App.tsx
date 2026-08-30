@@ -70,7 +70,10 @@ export default function App() {
 
       {/* Mainnet safety gate — require explicit confirmation once per session when passphrase is mainnet */}
       {isMainnet && requiresMainnetConfirm && (
-        <div className="card" style={{ background: "#3b1f1f", borderColor: "#7f1d1d", marginBottom: 16 }}>
+        <div
+          className="card"
+          style={{ background: "#3b1f1f", borderColor: "#7f1d1d", marginBottom: 16 }}
+        >
           <p style={{ color: "#fbbf24", fontSize: 13, fontWeight: 600 }}>
             ⚠ Mainnet mode — real funds at risk. Please confirm you intend to use Mainnet before
             continuing.

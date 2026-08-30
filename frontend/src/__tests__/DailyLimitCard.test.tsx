@@ -51,7 +51,9 @@ describe("DailyLimitCard", () => {
     // Progress bar
     expect(screen.getByRole("progressbar", { name: /daily limit usage/i })).toBeInTheDocument();
     expect(screen.getByText(/70% used/)).toBeInTheDocument();
-    expect(screen.getByText(/Resets about 24 hours after your first spend today/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Resets about 24 hours after your first spend today/)
+    ).toBeInTheDocument();
   });
 
   it("shows Not set and uncapped hint when no limit", async () => {
@@ -85,7 +87,9 @@ describe("DailyLimitCard", () => {
     });
     const { default: Card4 } = await import("../components/DailyLimitCard");
     render(<Card4 userKey="GABC" refreshTrigger={0} onOpen={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText(/Limit expired but window still active/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/Limit expired but window still active/)).toBeInTheDocument()
+    );
   });
 
   it("shows error state when fetch fails", async () => {

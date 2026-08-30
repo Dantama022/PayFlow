@@ -117,7 +117,9 @@ const PayPerUseForm = forwardRef<HTMLInputElement, PayPerUseFormProps>(
       const stroops = BigInt(Math.round(parseFloat(amount) * 10_000_000));
       // Extra guard: re-check before wallet prompt
       if (remaining !== null && stroops > remaining) {
-        setError(`Amount exceeds remaining daily budget. Remaining: ${displayCurrentAmount(remaining)}`);
+        setError(
+          `Amount exceeds remaining daily budget. Remaining: ${displayCurrentAmount(remaining)}`
+        );
         return;
       }
       await onPay(stroops);
@@ -132,29 +134,76 @@ const PayPerUseForm = forwardRef<HTMLInputElement, PayPerUseFormProps>(
         ? "Pay now (unavailable during maintenance)"
         : undefined;
 
-    const progress = dailyLimit !== null && dailySpent !== null ? dailyLimitProgress(dailySpent, dailyLimit) : 0;
+    const progress =
+      dailyLimit !== null && dailySpent !== null ? dailyLimitProgress(dailySpent, dailyLimit) : 0;
 
     return (
       <div className="card">
         <h3 className="ppu-card__title">Pay-per-use</h3>
         {(dailyLimit !== null || isLimitLoading) && (
-          <div style={{ marginBottom: 12, padding: 10, background: "var(--color-surface-overlay)", borderRadius: 8, border: "1px solid var(--color-border)" }}>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 10,
+              background: "var(--color-surface-overlay)",
+              borderRadius: 8,
+              border: "1px solid var(--color-border)",
+            }}
+          >
             {isLimitLoading ? (
               <span className="text-xs text-muted">Loading daily spending limit…</span>
             ) : (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                  <span className="text-xs text-muted">Limit: {displayCurrentAmount(dailyLimit!)}</span>
-                  <span className="text-xs text-muted">Spent: {displayCurrentAmount(dailySpent!)}</span>
-                  <span className="text-xs" style={{ fontWeight: 600, color: remaining !== null && remaining <= 0n ? "var(--color-danger)" : "var(--color-success)" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span className="text-xs text-muted">
+                    Limit: {displayCurrentAmount(dailyLimit!)}
+                  </span>
+                  <span className="text-xs text-muted">
+                    Spent: {displayCurrentAmount(dailySpent!)}
+                  </span>
+                  <span
+                    className="text-xs"
+                    style={{
+                      fontWeight: 600,
+                      color:
+                        remaining !== null && remaining <= 0n
+                          ? "var(--color-danger)"
+                          : "var(--color-success)",
+                    }}
+                  >
                     Remaining: {remaining !== null ? displayCurrentAmount(remaining) : "—"}
                   </span>
                 </div>
-                <div style={{ marginTop: 8, height: 6, background: "var(--color-border)", borderRadius: 999, overflow: "hidden" }}>
-                  <div style={{ width: `${progress}%`, height: "100%", background: progress >= 100 ? "var(--color-danger)" : "var(--color-primary)", transition: "width 0.2s" }} />
+                <div
+                  style={{
+                    marginTop: 8,
+                    height: 6,
+                    background: "var(--color-border)",
+                    borderRadius: 999,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${progress}%`,
+                      height: "100%",
+                      background: progress >= 100 ? "var(--color-danger)" : "var(--color-primary)",
+                      transition: "width 0.2s",
+                    }}
+                  />
                 </div>
                 <p className="text-xs text-muted" style={{ marginTop: 6 }}>
-                  {dayActive ? "Resets about 24 hours after your first spend today." : "Window starts on first pay-per-use."} {progress}% used.
+                  {dayActive
+                    ? "Resets about 24 hours after your first spend today."
+                    : "Window starts on first pay-per-use."}{" "}
+                  {progress}% used.
                 </p>
               </>
             )}

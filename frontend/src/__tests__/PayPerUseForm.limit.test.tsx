@@ -46,7 +46,9 @@ describe("PayPerUseForm daily limit UX (Issue 050)", () => {
     await userEvent.clear(input);
     await userEvent.type(input, "4");
     await waitFor(() => expect(button).toBeDisabled());
-    expect(screen.getByTestId("ppu-limit-error")).toHaveTextContent(/Exceeds remaining daily budget/);
+    expect(screen.getByTestId("ppu-limit-error")).toHaveTextContent(
+      /Exceeds remaining daily budget/
+    );
   });
 
   it("blocks when remaining is 0 (limit reached)", async () => {
@@ -79,7 +81,15 @@ describe("PayPerUseForm daily limit UX (Issue 050)", () => {
 
   it("shows loading when isLimitLoading true", async () => {
     const onPay = vi.fn();
-    render(<PayPerUseForm onPay={onPay} loading={false} isLimitLoading={true} dailyLimit={100_000_000n} dailySpent={0n} />);
+    render(
+      <PayPerUseForm
+        onPay={onPay}
+        loading={false}
+        isLimitLoading={true}
+        dailyLimit={100_000_000n}
+        dailySpent={0n}
+      />
+    );
     expect(screen.getByText(/Loading daily spending limit/)).toBeInTheDocument();
   });
 

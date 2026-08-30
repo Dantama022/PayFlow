@@ -113,10 +113,14 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
       </div>
 
       {isInterrupted && (
-        <div className="tx-queue-entry__error" role="alert" style={{ background: "#451a03", borderColor: "#92400e" }}>
+        <div
+          className="tx-queue-entry__error"
+          role="alert"
+          style={{ background: "#451a03", borderColor: "#92400e" }}
+        >
           <span className="text-sm" style={{ color: "#fbbf24" }}>
-            Interrupted — wallet closed before confirmation. Check explorer; if no recent tx, you may
-            retry. Retrying will re-simulate before submitting.
+            Interrupted — wallet closed before confirmation. Check explorer; if no recent tx, you
+            may retry. Retrying will re-simulate before submitting.
           </span>
         </div>
       )}
@@ -128,7 +132,10 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
       )}
 
       {showRecovery && (
-        <div className="tx-queue-entry__actions" style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <div
+          className="tx-queue-entry__actions"
+          style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}
+        >
           {entry.retry ? (
             <button
               className="btn-secondary tx-queue-entry__retry"
@@ -140,7 +147,9 @@ function TxEntryRow({ entry }: TxEntryRowProps) {
               {retrying ? "Retrying…" : isInterrupted ? "Resume" : "Retry"}
             </button>
           ) : isInterrupted ? (
-            <span className="text-sm text-muted">No retry available — rebuild the transaction and try again.</span>
+            <span className="text-sm text-muted">
+              No retry available — rebuild the transaction and try again.
+            </span>
           ) : null}
           <button
             className="btn-secondary tx-queue-entry__discard"
@@ -242,7 +251,8 @@ export default function TxQueuePanel() {
             </button>
           </div>
           <p className="text-xs text-muted" style={{ padding: "8px 16px 0", margin: 0 }}>
-            Pending items survive reload. Interrupted signings stay pending until you resume or discard.
+            Pending items survive reload. Interrupted signings stay pending until you resume or
+            discard.
           </p>
           <ul id="tx-queue-list" className="tx-queue-list" aria-label="Recent transactions">
             {entries.map((entry) => (
