@@ -533,6 +533,33 @@ async function runChecks(): Promise<ReadinessReport> {
       [emptyUsers],
       SKIP_KEY_CHECK ? undefined : ADMIN_SECRET || undefined
     );
+  if (!CONTRACT_ID) {
+    logger.error("Error: CONTRACT_ID environment variable is required.");
+    process.exit(1);
+  }
+
+  logger.info("=== FlowPay Pre-Upgrade Check ===");
+  logger.info(`Contract : ${CONTRACT_ID}`);
+  logger.info(`RPC URL  : ${RPC_URL}`);
+  logger.info(`Network  : ${NETWORK_PASSPHRASE}`);
+  logger.info("");
+
+  // 1. Admin address
+  const adminVal = await simulateReadOnly("get_admin");
+  const admin = scValToString(adminVal);
+  logger.info(`Admin address      : ${admin}`);
+
+  // 2. Active subscription count
+  const countVal = await simulateReadOnly("get_active_count");
+  const activeCount = scValToString(countVal);
+  logger.info(`Active subscriptions: ${activeCount}`);
+
+  if (Number(activeCount) > 0) {
+    console.warn(
+      `  ⚠  ${activeCount} active subscription(s) will be affected by a storage migration.`,
+    logger.warn(
+      `  ⚠  ${activeCount} active subscription(s) will be affected by a storage migration.`
+    );
     if (error) {
       // Auth failures on empty migrate with dummy source are expected without admin key.
       if (SKIP_KEY_CHECK || !ADMIN_SECRET) {

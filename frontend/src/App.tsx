@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
+import { useRpcHealthContext } from "./context/RpcHealthContext";
+import SubscribeForm from "./components/SubscribeForm";
+import Dashboard from "./components/Dashboard";
+import RpcSettings from "./components/RpcSettings";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
 import { useAdmin } from "./hooks/useAdmin";
 import { useContractPaused } from "./hooks/useContractPaused";
@@ -22,6 +26,12 @@ export default function App() {
   const { publicKey, connect, disconnect, signAndSubmit, error, connecting, activeAdapter } =
     useWallet();
   const { announcement, announce } = useAccessibility();
+  const { healthy, circuitOpen } = useRpcHealthContext();
+  const [tab, setTab] = useState<"subscribe" | "dashboard">("dashboard");
+  const [refresh, setRefresh] = useState(0);
+  const [showRpcSettings, setShowRpcSettings] = useState(false);
+
+  const isRpcFailing = !healthy || circuitOpen;
   const { networkMatch, walletNetwork } = useNetworkCheck();
   const { isAdmin } = useAdmin(publicKey);
   const { networkMatch, walletNetwork, isMainnet, requiresMainnetConfirm, confirmMainnet } =
@@ -70,6 +80,35 @@ export default function App() {
         </div>
       </div>
 
+      {/* RPC Failure Banner */}
+      {isRpcFailing && (
+        <div
+          role="alert"
+          data-testid="rpc-failure-banner"
+          className="card"
+          style={{
+            background: "var(--color-danger-bg, #451a1a)",
+            color: "var(--color-danger-text, #f87171)",
+            border: "1px solid var(--color-danger, #ef4444)",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            padding: "12px 16px",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>
+            ⚠️ RPC endpoint is unreachable. Try a different endpoint.
+          </span>
+          <button
+            className="btn-secondary"
+            onClick={() => setShowRpcSettings(true)}
+            data-testid="rpc-failure-banner-change-btn"
+            aria-label="Try a different RPC endpoint"
+            style={{ fontSize: 12, padding: "4px 8px", whiteSpace: "nowrap" }}
+          >
+            Try a different endpoint
       {/* Mainnet safety gate — require explicit confirmation once per session when passphrase is mainnet */}
       {isMainnet && requiresMainnetConfirm && (
         <div
@@ -90,6 +129,8 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {showRpcSettings && <RpcSettings onClose={() => setShowRpcSettings(false)} />}
 
       {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
       {publicKey && !networkMatch && (
