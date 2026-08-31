@@ -1,5 +1,6 @@
 import React from "react";
 import SubscriptionRepairPanel from "../components/admin/SubscriptionRepairPanel";
+import ProtocolStatsPanel from "../components/admin/ProtocolStatsPanel";
 import BatchPausePanel from "../components/admin/BatchPausePanel";
 import BatchWhitelistPanel from "../components/admin/BatchWhitelistPanel";
 import { useAdmin } from "../hooks/useAdmin";
@@ -42,6 +43,11 @@ export default function AdminDashboard({ publicKey, onSign, gatePassed = true }:
 
       <div className="card admin-dashboard__section mb-4">
         <SubscriptionRepairPanel adminKey={publicKey} onSign={onSign} gatePassed={gatePassed} />
+        <ProtocolStatsPanel callerKey={publicKey} />
+      </div>
+
+      <div className="card admin-dashboard__section mb-4">
+        <SubscriptionRepairPanel adminKey={publicKey} onSign={onSign} />
       </div>
 
       <div
