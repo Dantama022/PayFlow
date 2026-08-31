@@ -18,6 +18,7 @@ import TabBar from "./components/TabBar";
 import ContractPauseBanner from "./components/ContractPauseBanner";
 import NetworkBadge from "./components/NetworkBadge";
 import AdminDashboard from "./pages/AdminDashboard";
+import ContractPauseBanner from "./components/ContractPauseBanner";
 import type { WalletAdapter } from "./services/wallets/WalletAdapter";
 
 type Tab = "dashboard" | "subscribe" | "merchant" | "admin";
@@ -80,6 +81,8 @@ export default function App() {
         </div>
       </div>
 
+      {/* Contract pause banner — shown at root level so it's always visible */}
+      <ContractPauseBanner paused={isPaused} />
       {/* RPC Failure Banner */}
       {isRpcFailing && (
         <div
@@ -190,6 +193,7 @@ export default function App() {
                   setTab("dashboard");
                   setRefresh((r) => r + 1);
                 }}
+                isPaused={isPaused}
               />
             )}
             {tab === "dashboard" && (
