@@ -149,6 +149,10 @@ export async function buildResumeTx(user: string): Promise<string> {
   return buildTx(user, "resume", [addressVal(user)]);
 }
 
+export async function buildTransferSubscriptionTx(user: string, newUser: string): Promise<string> {
+  return buildTx(user, "transfer_subscription", [addressVal(user), addressVal(newUser)]);
+}
+
 export async function buildSetDailyLimitTx(user: string, amount: bigint): Promise<string> {
   return buildTx(user, "set_daily_limit", [
     addressVal(user),
@@ -310,6 +314,63 @@ export function getDailySpent(user: string): Promise<bigint> {
       return 0n;
     }
   });
+}
+
+export function getDayStart(user: string): Promise<bigint | null> {
+  return dedupedCall(`getDayStart:${user}`, async () => {
+    const contract = new Contract(CONTRACT_ID);
+    const account = await server.getAccount(user);
+
+    const tx = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation(contract.call("get_day_start", addressVal(user)))
+      .setTimeout(30)
+      .build();
+
+    const result = await server.simulateTransaction(tx);
+    if ("error" in result) throw new Error((result as { error: string }).error);
+
+    const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+    if (!retval || retval.switch().name === "scvVoid") return null;
+
+    // Contract returns Option<u64> (timestamp of window start). Some deployments may return bool.
+    const type = retval.switch().name;
+    if (type === "scvBool") {
+      return retval.b() ? 1n : null;
+    }
+    try {
+      const decoded = ScValDecoder.decodeOption(retval, ScValDecoder.decodeU64);
+      return decoded;
+    } catch {
+      // Fallback: try direct u64
+      try {
+        return ScValDecoder.decodeU64(retval);
+      } catch {
+        return null;
+      }
+    }
+  });
+}
+
+export interface DailyLimitStatus {
+  limit: bigint | null;
+  spent: bigint;
+  remaining: bigint | null;
+  dayActive: boolean;
+  dayStart: bigint | null;
+}
+
+export async function getDailyLimitStatus(user: string): Promise<DailyLimitStatus> {
+  const [limit, spent, dayStart] = await Promise.all([
+    getDailyLimit(user),
+    getDailySpent(user),
+    getDayStart(user),
+  ]);
+  const dayActive = dayStart !== null;
+  const remaining = limit !== null ? (limit > spent ? limit - spent : 0n) : null;
+  return { limit, spent, remaining, dayActive, dayStart };
 }
 
 export async function buildApproveTx(
@@ -793,6 +854,10 @@ export function getMerchantRevenue(merchant: string): Promise<bigint> {
   });
 }
 
+export async function buildWithdrawMerchantRevenueTx(merchant: string): Promise<string> {
+  return buildTx(merchant, "withdraw_merchant_revenue", [addressVal(merchant)]);
+}
+
 export async function getBalance(
   publicKey: string,
   fields?: { asset_type?: string }
@@ -813,6 +878,39 @@ export async function getBalance(
   } catch {
     return "0";
   }
+}
+
+export function getTokenBalance(owner: string, tokenId: string): Promise<bigint> {
+  if (!tokenId) return Promise.reject(new Error("Token ID is required."));
+
+  return dedupedCall(`getTokenBalance:${owner}:${tokenId}`, async () => {
+    try {
+      const tokenContract = new Contract(tokenId);
+      const account = await server.getAccount(owner);
+
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: NETWORK_PASSPHRASE,
+      })
+        .addOperation(tokenContract.call("balance", addressVal(owner)))
+        .setTimeout(30)
+        .build();
+
+      const result = await server.simulateTransaction(tx);
+      if ("error" in result) return 0n;
+
+      const retval = (result as { result?: { retval?: xdr.ScVal } }).result?.retval;
+      if (!retval) return 0n;
+
+      try {
+        return ScValDecoder.decodeI128(retval);
+      } catch {
+        return 0n;
+      }
+    } catch {
+      return 0n;
+    }
+  });
 }
 
 export function getAllowance(owner: string, tokenId = TOKEN_CONTRACT_ID): Promise<bigint> {

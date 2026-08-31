@@ -64,6 +64,7 @@ export interface ReadySubscriber {
   overdue_seconds: number;
   grace_remaining_seconds: number | null;
   approaching_grace_expiry: boolean;
+  urgency_score?: number;
 }
 
 export interface OptimizedBatch {
@@ -101,6 +102,7 @@ Usage: tsx scripts/batch-optimizer.ts [options]
 
 Options:
   --max-batches <n>   Limit how many batches to emit this cycle (remainder deferred)
+  --urgency-file <f>  Path to urgency JSON from monitor (use "-" for stdin)
   --json              Print full OptimizerResult JSON (default: batches array only)
   --help, -h          Show this help
 
@@ -185,7 +187,8 @@ async function getSubscription(user: string): Promise<SubscriptionFields | null>
  */
 export async function getNextChargeBatchSimulation(
   nowSeconds: number,
-  gracePeriod: number
+  gracePeriod: number,
+  urgencyScores: Record<string, number> = {}
 ): Promise<ReadySubscriber[]> {
   const count = await getU64("get_subscriber_count");
   const ready: ReadySubscriber[] = [];
@@ -226,6 +229,7 @@ export async function getNextChargeBatchSimulation(
         overdue_seconds: overdue,
         grace_remaining_seconds: graceRemaining,
         approaching_grace_expiry: approaching,
+        urgency_score: urgencyScores[address] ?? 0
       });
     }
   }
@@ -234,10 +238,15 @@ export async function getNextChargeBatchSimulation(
 }
 
 /**
- * Sort ready subscribers: grace-expiry urgency first, then most overdue first.
+ * Sort ready subscribers: urgency score first, then grace-expiry urgency, then most overdue first.
  */
 export function prioritizeReady(ready: ReadySubscriber[]): ReadySubscriber[] {
   return [...ready].sort((a, b) => {
+    const scoreA = a.urgency_score ?? 0;
+    const scoreB = b.urgency_score ?? 0;
+    if (scoreA !== scoreB) {
+      return scoreB - scoreA; // higher score first
+    }
     if (a.approaching_grace_expiry !== b.approaching_grace_expiry) {
       return a.approaching_grace_expiry ? -1 : 1;
     }
@@ -278,6 +287,7 @@ export function chunkBatches(
 export async function buildOptimizedBatches(options?: {
   maxBatches?: number;
   nowSeconds?: number;
+  urgencyScores?: Record<string, number>;
 }): Promise<OptimizerResult> {
   if (!CONTRACT_ID) {
     throw new Error("CONTRACT_ID environment variable is required");
@@ -300,7 +310,7 @@ export async function buildOptimizedBatches(options?: {
   }
 
   const nowSeconds = options?.nowSeconds ?? Math.floor(Date.now() / 1000);
-  const ready = await getNextChargeBatchSimulation(nowSeconds, gracePeriod);
+  const ready = await getNextChargeBatchSimulation(nowSeconds, gracePeriod, options?.urgencyScores ?? {});
   const ordered = prioritizeReady(ready);
 
   let maxCycle = MAX_CYCLE_USERS;
@@ -331,6 +341,7 @@ export async function buildOptimizedBatches(options?: {
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
+import { readFileSync } from "node:fs";
 
 async function main(): Promise<void> {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
@@ -349,8 +360,24 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  let urgencyScores: Record<string, number> = {};
+  const urgencyFileArg = getArg("--urgency-file");
+  if (urgencyFileArg) {
+    try {
+      const dataStr = urgencyFileArg === "-" ? readFileSync(0, "utf-8") : readFileSync(urgencyFileArg, "utf-8");
+      const data = JSON.parse(dataStr);
+      if (data.scores) {
+        for (const s of data.scores) {
+           urgencyScores[s.subscriber] = s.urgencyScore;
+        }
+      }
+    } catch (err) {
+       console.error(`Failed to read urgency file: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   const fullJson = process.argv.includes("--json");
-  const result = await buildOptimizedBatches({ maxBatches });
+  const result = await buildOptimizedBatches({ maxBatches, urgencyScores });
 
   if (fullJson) {
     console.log(JSON.stringify(result, null, 2));

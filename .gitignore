@@ -189,3 +189,6 @@ config/local.json
 contract/target/
 
 contract/target/
+
+# Webhook Dead Letter Queue
+data/webhook-dlq.jsonl

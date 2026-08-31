@@ -21,6 +21,9 @@
  *   keeper_active_subscribers            — Gauge, current active subscriber count
  *   keeper_batch_size                    — Gauge, addresses per batch
  *   keeper_cycles_total                  — Counter, total charge cycles run
+ *   indexer_duplicate_events_total       — Counter, duplicate events skipped by EventDedupCache
+ *   indexer_dedup_cache_size             — Gauge, current EventDedupCache entry count
+ *   indexer_dedup_evictions_total        — Counter, LRU evictions from EventDedupCache
  */
 
 import http from "node:http";
@@ -85,6 +88,27 @@ const cyclesTotal = new Counter({
   registers: [registry],
 });
 
+/** Total duplicate events skipped by an EventDedupCache (indexer, watch-events, etc.). */
+const indexerDuplicatesTotal = new Counter({
+  name: "indexer_duplicate_events_total",
+  help: "Total number of duplicate events skipped via EventDedupCache",
+  registers: [registry],
+});
+
+/** Current number of entries held in the EventDedupCache. */
+const indexerDedupCacheSize = new Gauge({
+  name: "indexer_dedup_cache_size",
+  help: "Current entry count of the EventDedupCache",
+  registers: [registry],
+});
+
+/** Total LRU evictions performed by the EventDedupCache. */
+const indexerDedupEvictionsTotal = new Counter({
+  name: "indexer_dedup_evictions_total",
+  help: "Total number of LRU evictions performed by the EventDedupCache",
+  registers: [registry],
+});
+
 // ── Public API for the keeper run loop ───────────────────────────────────────
 
 /**
@@ -137,6 +161,34 @@ export function incrementCycles(): void {
 /** Record a batch_charge duration manually. */
 export function observeBatchDuration(durationMs: number): void {
   batchDurationSeconds.observe(durationMs / 1000);
+}
+
+// Prometheus Counters only support incrementing by a delta, but
+// EventDedupCache.stats reports cumulative totals — track the last-seen
+// cumulative values here so repeated calls only add the difference.
+let lastDedupHits = 0;
+let lastDedupEvictions = 0;
+
+/**
+ * Record a snapshot of `EventDedupCache.stats` (hits/evictions/size) into the
+ * Prometheus registry. Safe to call repeatedly (e.g. once per poll cycle) —
+ * counters are incremented by the delta since the last call, and the size
+ * gauge is set to the current value.
+ */
+export function recordIndexerDedupStats(stats: {
+  hits: number;
+  evictions: number;
+  size: number;
+}): void {
+  const hitsDelta = stats.hits - lastDedupHits;
+  if (hitsDelta > 0) indexerDuplicatesTotal.inc(hitsDelta);
+  lastDedupHits = stats.hits;
+
+  const evictionsDelta = stats.evictions - lastDedupEvictions;
+  if (evictionsDelta > 0) indexerDedupEvictionsTotal.inc(evictionsDelta);
+  lastDedupEvictions = stats.evictions;
+
+  indexerDedupCacheSize.set(stats.size);
 }
 
 /**
