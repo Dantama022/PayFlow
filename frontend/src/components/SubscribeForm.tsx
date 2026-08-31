@@ -7,11 +7,13 @@ import {
   validateStroopAmount,
   type FormFields,
 } from "../hooks/useFormValidation";
+import { isValidStellarAddress } from "../utils/addressValidation";
 import { BILLING_INTERVALS, CONTRACT_LIMITS } from "../constants";
 import IntervalSelector from "./IntervalSelector";
 import BalanceDisplay from "./BalanceDisplay";
 import AllowanceDisplay from "./AllowanceDisplay";
 import AddressBook from "./AddressBook";
+import ReferralPanel from "./ReferralPanel";
 import ToastContainer from "./Toast";
 import { useToast } from "../hooks/useToast";
 
@@ -27,14 +29,37 @@ type TouchedFields = {
   merchant: boolean;
   amount: boolean;
   interval: boolean;
+  referrer: boolean;
   tokenAddress: boolean;
 };
 
-function fieldsAreValid(fields: FormFields): boolean {
+function validateReferrer(referrer: string, userKey: string): { valid: boolean; error?: string } {
+  if (!referrer.trim()) {
+    // Referrer is optional
+    return { valid: true };
+  }
+
+  const trimmed = referrer.trim();
+
+  // Check if it's a valid Stellar address
+  if (!isValidStellarAddress(trimmed)) {
+    return { valid: false, error: "Invalid Stellar address format" };
+  }
+
+  // Check for self-referral client-side
+  if (trimmed === userKey) {
+    return { valid: false, error: "Cannot refer yourself — the contract will reject this" };
+  }
+
+  return { valid: true };
+}
+
+function fieldsAreValid(fields: FormFields, referrerValid: boolean): boolean {
   return (
     validateAddress(fields.merchant).valid &&
     validateStroopAmount(fields.amount, CONTRACT_LIMITS.MAX_SUBSCRIPTION_AMOUNT).valid &&
     validateInterval(fields.interval, CONTRACT_LIMITS.MIN_INTERVAL_SECONDS).valid &&
+    referrerValid
     validateAddress(fields.tokenAddress).valid
   );
 }
@@ -55,6 +80,7 @@ export default function SubscribeForm({
     merchant: false,
     amount: false,
     interval: false,
+    referrer: false,
     tokenAddress: false,
   });
   const [showAddressBook, setShowAddressBook] = useState(false);
@@ -64,6 +90,13 @@ export default function SubscribeForm({
   const { errors, validate, validating } = useFormValidation();
   const { toasts, addToast, removeToast } = useToast();
 
+  const fields: FormFields = { merchant, amount, interval };
+  const referrerValidation = validateReferrer(referrer, userKey);
+  const canSubmit =
+    fieldsAreValid(fields, referrerValidation.valid) &&
+    !pending &&
+    !validating &&
+    !isPaused;
   const fields: FormFields = { merchant, amount, interval, tokenAddress };
   const canSubmit = fieldsAreValid(fields) && !pending && !validating && !isPaused;
 
@@ -96,6 +129,14 @@ export default function SubscribeForm({
 
   function handleAmountChange(e: React.ChangeEvent<HTMLInputElement>) {
     setAmount(e.target.value);
+  }
+
+  function handleReferrerChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setReferrer(e.target.value);
+  }
+
+  function handleReferrerBlur() {
+    setTouched((prev) => ({ ...prev, referrer: true }));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -137,6 +178,7 @@ export default function SubscribeForm({
   const merchantError = touched.merchant && errors.merchant ? errors.merchant : undefined;
   const amountError = touched.amount && errors.amount ? errors.amount : undefined;
   const intervalError = touched.interval && errors.interval ? errors.interval : undefined;
+  const referrerError = touched.referrer ? referrerValidation.error : undefined;
   const tokenAddressError =
     touched.tokenAddress && errors.tokenAddress ? errors.tokenAddress : undefined;
 
@@ -147,6 +189,9 @@ export default function SubscribeForm({
       <div className="form-group">
         <BalanceDisplay address={userKey} tokenId={tokenAddress} />
       </div>
+
+      {/* Referral Panel */}
+      <ReferralPanel publicKey={userKey} />
 
       {/* Merchant Field */}
       <div className="form-group">
@@ -233,6 +278,7 @@ export default function SubscribeForm({
         )}
       </div>
 
+      {/* Referrer Field */}
       <div className="form-group">
         <label className="form-label" htmlFor="tokenAddress-input">
           Token Address
@@ -274,9 +320,23 @@ export default function SubscribeForm({
           className="input"
           placeholder="Optional referrer G…"
           value={referrer}
-          onChange={(e) => setReferrer(e.target.value)}
+          onChange={handleReferrerChange}
+          onBlur={handleReferrerBlur}
+          aria-invalid={referrerError ? true : undefined}
+          aria-describedby={referrerError ? "referrer-error" : undefined}
           autoComplete="off"
         />
+        {referrerError && (
+          <span
+            id="referrer-error"
+            data-testid="referrer-error"
+            className="error-message text-error"
+            role="alert"
+          >
+            {referrerError}
+          </span>
+        )}
+        <AllowanceDisplay userKey={userKey} subscriptionAmount={0n} refreshTrigger={0} />
         <AllowanceDisplay
           userKey={userKey}
           subscriptionAmount={BigInt(Math.round(parseFloat(amount || "0") * 10_000_000))}
