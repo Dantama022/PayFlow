@@ -9,6 +9,8 @@ interface Props {
   children?: React.ReactNode;
   /** Disables the confirm button, e.g. while a bounded input is invalid. */
   confirmDisabled?: boolean;
+  confirmTestId?: string;
+  cancelTestId?: string;
 }
 
 export default function ConfirmModal({
@@ -17,6 +19,8 @@ export default function ConfirmModal({
   onCancel,
   children,
   confirmDisabled = false,
+  confirmTestId,
+  cancelTestId,
 }: Props) {
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -35,10 +39,11 @@ export default function ConfirmModal({
         <p id="confirm-modal-message">{message}</p>
         {children}
         <div className="modal-actions">
-          <button className="btn-secondary" onClick={onCancel}>
+          <button className="btn-secondary" onClick={onCancel} data-testid={cancelTestId}>
             Cancel
           </button>
           <button className="btn-danger" onClick={onConfirm} disabled={confirmDisabled}>
+          <button className="btn-danger" onClick={onConfirm} data-testid={confirmTestId}>
             Confirm
           </button>
         </div>

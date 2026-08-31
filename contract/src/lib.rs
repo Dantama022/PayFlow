@@ -348,53 +348,45 @@ impl FlowPay {
         }
     }
 
+    /// Dry-run estimate of a `batch_charge` call.  Returns one `ChargeResult`
+    /// per input user using the same decision logic as the live path, but
+    /// **never** performs state writes, token transfers, or fee collection.
+    ///
+    /// Share one precheck with `simulate_charge`: both callers route through
+    /// `charge_exec::dry_run_skip_precheck` so they agree on skip/pause/grace/
+    /// inactive/not-due outcomes.  See the design-comment block in
+    /// `charge_exec.rs` at `DryRunSkipOutcome` for the full list of intentional
+    /// differences (return enums, allowance handling deferred to Issue 001,
+    /// etc.).
+    ///
+    /// Non-goals (Issue 005 scope boundaries — do NOT expand):
+    ///   * Allowance / InsufficientAllowance redesign → Issue 001.
+    ///   * Volume-cap precheck redesign → separate issue.
     pub fn get_batch_charge_estimate(env: Env, users: Vec<Address>) -> Vec<ChargeResult> {
         if users.len() > 200 {
             env.panic_with_error(ContractError::BatchTooLarge);
         }
         let mut results: Vec<ChargeResult> = Vec::new(&env);
-        let now = env.ledger().timestamp();
-        let grace_period = grace::get_grace_period(&env);
 
         for user in users.iter() {
             let key = DataKey::Subscription(user.clone());
             let sub_opt: Option<Subscription> = env.storage().persistent().get(&key);
 
-            let result = match sub_opt {
-                None => ChargeResult::NoSubscription,
-                Some(mut sub) => {
-                    if sub.paused && charge_exec::try_auto_resume(&env, &user, &mut sub, now) {
-                        // Auto-resumed — fall through to allowance check below.
-                        // Re-run precheck on the now-active sub to be safe, then
-                        // mirror the same allowance check as the live batch path.
-                        match charge_exec::precheck_charge(&sub, now, grace_period) {
-                            Err(skip) => skip,
-                            Ok(()) => {
-                                if !validation::has_sufficient_allowance(
-                                    &env, &user, &sub.token, sub.amount,
-                                ) {
-                                    ChargeResult::AllowanceInsufficient
-                                } else {
-                                    ChargeResult::Charged
-                                }
-                            }
-                        }
-                    } else {
-                        match charge_exec::precheck_charge(&sub, now, grace_period) {
-                            Err(skip) => skip,
-                            Ok(()) => {
-                                if !validation::has_sufficient_allowance(
-                                    &env, &user, &sub.token, sub.amount,
-                                ) {
-                                    ChargeResult::AllowanceInsufficient
-                                } else {
-                                    ChargeResult::Charged
-                                }
-                            }
-                        }
-                    }
+            let (outcome, sub_after_precheck) =
+                charge_exec::dry_run_skip_precheck(&env, &user, sub_opt, true);
+
+            let result = if let charge_exec::DryRunSkipOutcome::ProceedToAllowance = outcome {
+                let sub = sub_after_precheck
+                    .expect("sub present when dry_run_precheck returns ProceedToAllowance");
+                if !validation::has_sufficient_allowance(&env, &user, &sub.token, sub.amount) {
+                    ChargeResult::AllowanceInsufficient
+                } else {
+                    ChargeResult::Charged
                 }
+            } else {
+                outcome.into_batch_result()
             };
+
             results.push_back(result);
         }
         results
@@ -1898,10 +1890,25 @@ impl FlowPay {
     // Admin setup
     // ─────────────────────────────────────────────────────────────
 
-    /// Sets the contract admin. Can only be called once; subsequent calls panic.
+    /// Bootstrap-only entrypoint that writes the contract admin when no admin
+    /// is configured. This is a narrower alternative to [`Self::initialize`]:
+    ///
+    /// - **`initialize(token, admin)`** atomically sets the default token *and*
+    ///   the admin together. Use this for standard deployments via
+    ///   `scripts/deploy-pipeline.ts` — it is the canonical full-init path.
+    /// - **`set_initial_admin(admin)`** sets only the admin slot. It is
+    ///   intended for partial-recovery or segmented-deploy scenarios where the
+    ///   token is written separately (or not at all), and admin-only governance
+    ///   is needed before full initialization.
+    ///
+    /// In both cases the proposed admin must sign the call via
+    /// `require_auth()`, and a second call on an already-configured contract
+    /// fails with a typed `ContractError::AdminAlreadySet` (code 42) so
+    /// deploy scripts can detect the condition without string-parsing panics.
     pub fn set_initial_admin(env: Env, admin: Address) {
+        admin.require_auth();
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("admin already set");
+            env.panic_with_error(ContractError::AdminAlreadySet);
         }
         storage::set_admin(&env, &admin);
     }
@@ -2021,6 +2028,7 @@ impl FlowPay {
     /// refreshes TTL, and emits `sub_transferred` and `subscription_transferred`.
     pub fn transfer_subscription(env: Env, user: Address, new_user: Address) {
         ensure_contract_not_paused(&env);
+        validation::require_valid_transfer_targets(&env, &user, &new_user);
         user.require_auth();
         new_user.require_auth();
 
@@ -2286,6 +2294,7 @@ fn subscribe_inner(
     referrer: Option<Address>,
 ) {
     bump_instance_ttl(env);
+    validation::require_valid_subscribe_addresses(env, &user, &merchant);
     user.require_auth();
 
     if whitelist::is_whitelist_enabled(env) && !whitelist::is_whitelisted(env, &merchant) {
