@@ -19,6 +19,7 @@ import React, { useEffect, useState } from "react";
 import CopyButton from "./CopyButton";
 import NextChargeCountdown from "./NextChargeCountdown";
 import IncreaseAllowanceModal from "./IncreaseAllowanceModal";
+import TransferSubscriptionModal from "./TransferSubscriptionModal";
 import ErrorRecovery from "./ErrorRecovery";
 import SubscriptionHealthWidget from "./SubscriptionHealthWidget";
 import { Subscription } from "../types";
@@ -231,6 +232,9 @@ export default function SubscriptionCard({
   const [allowanceLoading, setAllowanceLoading] = useState(true);
   const [showAllowanceModal, setShowAllowanceModal] = useState(false);
 
+  // ── Transfer subscription state ────────────────────────────────────────────
+  const [showTransferModal, setShowTransferModal] = useState(false);
+
   const amountBigInt = BigInt(amount);
   const health = computeAllowanceHealth(allowance, amountBigInt);
 
@@ -352,8 +356,10 @@ export default function SubscriptionCard({
           <h2 className="subscription-card__title">Your Subscription</h2>
           {subscription.label && <p className="subscription-card__label">{subscription.label}</p>}
         </div>
-        <span className={`badge ${active ? "badge-active" : "badge-inactive"}`}>
-          {active ? (isInTrial ? "Trial Active" : "Active") : "Cancelled"}
+        <span
+          className={`badge ${active && !paused ? "badge-active" : paused ? "badge-warning" : "badge-inactive"}`}
+        >
+          {active ? (paused ? "Paused" : isInTrial ? "Trial Active" : "Active") : "Cancelled"}
         </span>
       </div>
 
@@ -390,11 +396,17 @@ export default function SubscriptionCard({
         <StackedRow label="Interval" value={formatInterval(interval)} isMobile={isMobile} />
         <div className={`subscription-row${isMobile ? " subscription-row--stacked" : ""}`}>
           <span className="subscription-row__label">
-            {isInTrial ? "First charge" : "Next charge"}
+            {paused ? "Status" : isInTrial ? "First charge" : "Next charge"}
           </span>
           <span className="subscription-row__value">
-            {active && !paused ? (
-              <NextChargeCountdown nextChargeTimestamp={nextChargeTimestamp} />
+            {active ? (
+              paused ? (
+                <span className="badge badge-warning" aria-label="Subscription is paused">
+                  Paused
+                </span>
+              ) : (
+                <NextChargeCountdown nextChargeTimestamp={nextChargeTimestamp} />
+              )
             ) : (
               "—"
             )}
@@ -433,6 +445,14 @@ export default function SubscriptionCard({
             >
               Cancel
             </button>
+            <button
+              onClick={() => setShowTransferModal(true)}
+              className="btn-secondary transfer-btn"
+              aria-label="Transfer subscription ownership"
+              data-testid="transfer-subscription-button"
+            >
+              Transfer
+            </button>
           </>
         )}
         {active && paused && (
@@ -450,6 +470,14 @@ export default function SubscriptionCard({
               aria-label="Cancel subscription"
             >
               Cancel
+            </button>
+            <button
+              onClick={() => setShowTransferModal(true)}
+              className="btn-secondary transfer-btn"
+              aria-label="Transfer subscription ownership"
+              data-testid="transfer-subscription-button"
+            >
+              Transfer
             </button>
           </>
         )}
@@ -512,6 +540,20 @@ export default function SubscriptionCard({
               .finally(() => setAllowanceLoading(false));
           }}
           announce={() => {}}
+        />
+      )}
+
+      {/* Transfer subscription modal — guided ownership transfer */}
+      {showTransferModal && (
+        <TransferSubscriptionModal
+          userKey={userKey}
+          onSign={onSign}
+          onClose={() => setShowTransferModal(false)}
+          onSuccess={() => {
+            setShowTransferModal(false);
+            addToast("Subscription transferred successfully.", "success");
+            onRefresh();
+          }}
         />
       )}
 

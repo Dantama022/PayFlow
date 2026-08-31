@@ -1,6 +1,9 @@
-import React, { useState, useRef, useCallback, lazy, Suspense } from "react";
+import React, { useState, useRef, useCallback, useEffect, lazy, Suspense } from "react";
 import {
   buildPayPerUseTx,
+  getDailyLimit,
+  getDailySpent,
+  getDayStart,
   ChargeSimResult,
   chargeSimBlocksPay,
   payBlockedReason,
@@ -64,6 +67,42 @@ export default function Dashboard({
   const [allowanceRefresh, setAllowanceRefresh] = useState(0);
   const [dailyLimitRefresh, setDailyLimitRefresh] = useState(0);
   const ppuInputRef = useRef<HTMLInputElement>(null);
+  const [dailyLimit, setDailyLimit] = useState<bigint | null>(null);
+  const [dailySpent, setDailySpent] = useState<bigint | null>(null);
+  const [dayStart, setDayStart] = useState<bigint | null>(null);
+  const [dailyLimitLoading, setDailyLimitLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadLimitForForm() {
+      if (!sub?.active) return;
+      setDailyLimitLoading(true);
+      try {
+        const [limit, spent, start] = await Promise.all([
+          getDailyLimit(userKey),
+          getDailySpent(userKey),
+          getDayStart(userKey),
+        ]);
+        if (!cancelled) {
+          setDailyLimit(limit);
+          setDailySpent(spent);
+          setDayStart(start);
+        }
+      } catch {
+        if (!cancelled) {
+          setDailyLimit(null);
+          setDailySpent(null);
+          setDayStart(null);
+        }
+      } finally {
+        if (!cancelled) setDailyLimitLoading(false);
+      }
+    }
+    loadLimitForForm();
+    return () => {
+      cancelled = true;
+    };
+  }, [userKey, sub?.active, dailyLimitRefresh, ppuTx.status]);
 
   usePolling({ callback: refresh, interval: 30000, enabled: !!sub?.active });
 
@@ -225,6 +264,10 @@ export default function Dashboard({
                 disabled={subscriptionHealthBlocksPay(subHealth) || chargeSimBlocksPay(simResult)}
                 disabledReason={payBlockedReason(subHealth, simResult) ?? undefined}
                 warningReason={payWarningReason(subHealth, simResult) ?? undefined}
+                dailyLimit={dailyLimit}
+                dailySpent={dailySpent}
+                dayActive={dayStart !== null}
+                isLimitLoading={dailyLimitLoading}
               />
               {ppuPending && (
                 <p className="status-text status-text--pending">Confirming payment…</p>
@@ -243,7 +286,7 @@ export default function Dashboard({
         </>
       )}
 
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      <ToastContainer toasts={toasts} onRemove={removeToast} isPaused={isPaused} />
 
       {showDailyLimit && sub?.active && (
         <DailyLimitModal

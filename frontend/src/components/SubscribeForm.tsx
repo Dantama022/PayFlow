@@ -30,6 +30,7 @@ type TouchedFields = {
   amount: boolean;
   interval: boolean;
   referrer: boolean;
+  tokenAddress: boolean;
 };
 
 function validateReferrer(referrer: string, userKey: string): { valid: boolean; error?: string } {
@@ -59,6 +60,7 @@ function fieldsAreValid(fields: FormFields, referrerValid: boolean): boolean {
     validateStroopAmount(fields.amount, CONTRACT_LIMITS.MAX_SUBSCRIPTION_AMOUNT).valid &&
     validateInterval(fields.interval, CONTRACT_LIMITS.MIN_INTERVAL_SECONDS).valid &&
     referrerValid
+    validateAddress(fields.tokenAddress).valid
   );
 }
 
@@ -73,11 +75,13 @@ export default function SubscribeForm({
   const [amount, setAmount] = useState("");
   const [interval, setInterval] = useState(BILLING_INTERVALS[2].value);
   const [referrer, setReferrer] = useState("");
+  const [tokenAddress, setTokenAddress] = useState(DEFAULT_TOKEN);
   const [touched, setTouched] = useState<TouchedFields>({
     merchant: false,
     amount: false,
     interval: false,
     referrer: false,
+    tokenAddress: false,
   });
   const [showAddressBook, setShowAddressBook] = useState(false);
   const [pending, setPending] = useState(false);
@@ -93,14 +97,26 @@ export default function SubscribeForm({
     !pending &&
     !validating &&
     !isPaused;
+  const fields: FormFields = { merchant, amount, interval, tokenAddress };
+  const canSubmit = fieldsAreValid(fields) && !pending && !validating && !isPaused;
 
   // Re-validate when touched fields change so errors clear as the user corrects them.
   useEffect(() => {
-    if (touched.merchant || touched.amount || touched.interval) {
+    if (touched.merchant || touched.amount || touched.interval || touched.tokenAddress) {
       validate(fields);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally keyed on field values + touched
-  }, [merchant, amount, interval, touched.merchant, touched.amount, touched.interval, validate]);
+  }, [
+    merchant,
+    amount,
+    interval,
+    tokenAddress,
+    touched.merchant,
+    touched.amount,
+    touched.interval,
+    touched.tokenAddress,
+    validate,
+  ]);
 
   function handleBlur(field: keyof TouchedFields) {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -125,7 +141,7 @@ export default function SubscribeForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setTouched({ merchant: true, amount: true, interval: true });
+    setTouched({ merchant: true, amount: true, interval: true, tokenAddress: true });
     setStatus(null);
 
     const ok = validate(fields);
@@ -140,7 +156,7 @@ export default function SubscribeForm({
         merchant,
         stroops,
         BigInt(interval),
-        DEFAULT_TOKEN,
+        tokenAddress,
         referrer.trim() || null,
         ""
       );
@@ -163,13 +179,15 @@ export default function SubscribeForm({
   const amountError = touched.amount && errors.amount ? errors.amount : undefined;
   const intervalError = touched.interval && errors.interval ? errors.interval : undefined;
   const referrerError = touched.referrer ? referrerValidation.error : undefined;
+  const tokenAddressError =
+    touched.tokenAddress && errors.tokenAddress ? errors.tokenAddress : undefined;
 
   return (
     <form className="subscribe-form" onSubmit={handleSubmit} noValidate>
       <h2 className="subscribe-form__title">New Subscription</h2>
 
       <div className="form-group">
-        <BalanceDisplay address={userKey} />
+        <BalanceDisplay address={userKey} tokenId={tokenAddress} />
       </div>
 
       {/* Referral Panel */}
@@ -262,6 +280,36 @@ export default function SubscribeForm({
 
       {/* Referrer Field */}
       <div className="form-group">
+        <label className="form-label" htmlFor="tokenAddress-input">
+          Token Address
+        </label>
+        <input
+          id="tokenAddress-input"
+          data-testid="tokenAddress-input"
+          name="tokenAddress"
+          className="input"
+          placeholder="Token Address G…"
+          value={tokenAddress}
+          onChange={(e) => setTokenAddress(e.target.value)}
+          onBlur={() => handleBlur("tokenAddress")}
+          aria-invalid={tokenAddressError ? true : undefined}
+          aria-describedby={tokenAddressError ? "tokenAddress-error" : undefined}
+          autoComplete="off"
+        />
+        {tokenAddressError && (
+          <span
+            id="tokenAddress-error"
+            data-testid="tokenAddress-error"
+            className="error-message text-error"
+            role="alert"
+          >
+            {tokenAddressError}
+          </span>
+        )}
+      </div>
+
+      {/* Referrer / allowance */}
+      <div className="form-group">
         <label className="form-label" htmlFor="referrer-input">
           Referrer (optional)
         </label>
@@ -289,6 +337,12 @@ export default function SubscribeForm({
           </span>
         )}
         <AllowanceDisplay userKey={userKey} subscriptionAmount={0n} refreshTrigger={0} />
+        <AllowanceDisplay
+          userKey={userKey}
+          subscriptionAmount={BigInt(Math.round(parseFloat(amount || "0") * 10_000_000))}
+          refreshTrigger={0}
+          tokenId={tokenAddress}
+        />
       </div>
 
       <button

@@ -20,11 +20,11 @@ vi.mock("../stellar", () => ({
   getAllowance: vi.fn(() => Promise.resolve(0n)),
   fetchEvents: vi.fn(() => Promise.resolve({ events: [], nextCursor: undefined })),
   buildSubscribeTx: vi.fn().mockResolvedValue("mock-xdr"),
-  DEFAULT_TOKEN: "CTOKEN",
+  DEFAULT_TOKEN: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
   RPC_URL: "https://soroban-testnet.stellar.org",
   NETWORK_PASSPHRASE: "Test SDF Network ; September 2015",
   CONTRACT_ID: "CTEST",
-  TOKEN_CONTRACT_ID: "CTOKEN",
+  TOKEN_CONTRACT_ID: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
   server: {
     getAccount: vi.fn().mockResolvedValue({}),
     getTransaction: vi.fn().mockResolvedValue({ status: "SUCCESS", returnValue: null }),
@@ -259,6 +259,7 @@ describe("useFormValidation hook", () => {
         merchant: "INVALID",
         amount: "5",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(false);
@@ -274,6 +275,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "0",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(false);
@@ -288,6 +290,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "10000001", // > 10_000_000 XLM = 100_000_010_000_000 stroops > max
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(false);
@@ -302,6 +305,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "5",
         interval: 3600, // below MIN_INTERVAL_SECONDS=86400
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(false);
@@ -316,6 +320,7 @@ describe("useFormValidation hook", () => {
         merchant: "INVALID",
         amount: "0",
         interval: 100,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(result.current.isValid).toBe(false);
@@ -326,6 +331,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "5",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(result.current.isValid).toBe(true);
@@ -341,6 +347,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "5",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(true);
@@ -355,6 +362,7 @@ describe("useFormValidation hook", () => {
         merchant: "INVALID",
         amount: "5",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(valid!).toBe(false);
@@ -369,6 +377,7 @@ describe("useFormValidation hook", () => {
         merchant: VALID_MERCHANT,
         amount: "5",
         interval: 86400,
+        tokenAddress: "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4",
       });
     });
     expect(result.current.errors.merchant).toMatch(/not found/i);
