@@ -76,6 +76,18 @@ export const ConfigSchema = z.object({
 
   /** Maximum number of subscriptions to charge in a single transaction (1–200) */
   BATCH_SIZE: z.coerce
+  /**
+   * Maximum number of subscriptions to charge in a single transaction (1–200).
+   * The upper bound of 200 mirrors the contract's `MAX_BATCH_SIZE_CEILING` —
+   * the hard cap no admin-configured on-chain batch limit can exceed. This
+   * schema only validates the env var's shape; `keeper.ts` additionally
+   * clamps the effective value at startup to whatever `get_max_batch_size()`
+   * reports on-chain right now (which defaults to 50 and may be lower than
+   * this 200 ceiling), so a value that passes this schema can still be
+   * narrowed further before it's used.
+   */
+  BATCH_SIZE: z
+    .coerce
     .number({ invalid_type_error: "BATCH_SIZE must be a number" })
     .int("BATCH_SIZE must be an integer")
     .min(1, "BATCH_SIZE must be at least 1")
@@ -93,12 +105,53 @@ export const ConfigSchema = z.object({
     .url("WEBHOOK_URL must be a valid URL with http:// or https:// protocol")
     .optional(),
 
+  /** Secret used to generate HMAC-SHA256 signature for webhooks */
+  WEBHOOK_SECRET: z
+    .string()
+    .min(1, "WEBHOOK_SECRET must not be empty if provided")
+    .optional(),
+
+  /** Optional file path for the Dead Letter Queue for failed webhooks */
+  WEBHOOK_DLQ_FILE: z
+    .string()
+    .optional(),
+
   /** Optional network passphrase for Stellar network identification */
   NETWORK_PASSPHRASE: z.string().optional(),
 });
 
 /** Inferred TypeScript type from ConfigSchema */
 export type KeeperConfig = z.infer<typeof ConfigSchema>;
+
+// ── Manifest schema ──────────────────────────────────────────────────────────
+
+export const ManifestSchema = z.object({
+  contractId: z
+    .string({ required_error: "contractId is required in manifest" })
+    .regex(contractIdRegex, "contractId must be a valid Stellar contract ID"),
+
+  tokenAddress: z
+    .string({ required_error: "tokenAddress is required in manifest" })
+    .min(1, "tokenAddress must not be empty"),
+
+  adminAddress: z
+    .string({ required_error: "adminAddress is required in manifest" })
+    .min(1, "adminAddress must not be empty"),
+
+  network: z
+    .string({ required_error: "network is required in manifest" })
+    .min(1, "network must not be empty"),
+
+  rpcUrl: z
+    .string({ required_error: "rpcUrl is required in manifest" })
+    .url("rpcUrl must be a valid URL"),
+
+  networkPassphrase: z
+    .string({ required_error: "networkPassphrase is required in manifest" })
+    .min(1, "networkPassphrase must not be empty"),
+});
+
+export type ValidatedManifest = z.infer<typeof ManifestSchema>;
 
 // ── Validation helpers ───────────────────────────────────────────────────────
 
