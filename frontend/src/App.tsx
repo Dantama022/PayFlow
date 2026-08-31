@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
 import { useRpcHealthContext } from "./context/RpcHealthContext";
@@ -6,6 +6,7 @@ import SubscribeForm from "./components/SubscribeForm";
 import Dashboard from "./components/Dashboard";
 import RpcSettings from "./components/RpcSettings";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
+import { useNetworkStatus } from "./hooks/useNetworkStatus";
 import { useAdmin } from "./hooks/useAdmin";
 import { useContractPaused } from "./hooks/useContractPaused";
 import { useToast } from "./hooks/useToast";
@@ -15,6 +16,7 @@ import MerchantDashboard from "./components/MerchantDashboard";
 import WalletSelectModal from "./components/WalletSelectModal";
 import WalletBar from "./components/WalletBar";
 import TabBar from "./components/TabBar";
+import OfflineBanner from "./components/OfflineBanner";
 import ContractPauseBanner from "./components/ContractPauseBanner";
 import NetworkBadge from "./components/NetworkBadge";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -34,6 +36,7 @@ export default function App() {
 
   const isRpcFailing = !healthy || circuitOpen;
   const { networkMatch, walletNetwork } = useNetworkCheck();
+  const isOnline = useNetworkStatus();
   const { isAdmin } = useAdmin(publicKey);
   const { networkMatch, walletNetwork, isMainnet, requiresMainnetConfirm, confirmMainnet } =
     useNetworkCheck();
@@ -48,6 +51,19 @@ export default function App() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [refresh, setRefresh] = useState(0);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const wasOnline = useRef(isOnline);
+
+  // Announce connectivity changes via the ARIA live region (issue: disable
+  // mutating CTAs while offline + announce status).
+  useEffect(() => {
+    if (wasOnline.current === isOnline) return;
+    wasOnline.current = isOnline;
+    announce(
+      isOnline
+        ? "Back online. Wallet actions are available again."
+        : "You are offline. Wallet actions are unavailable."
+    );
+  }, [isOnline, announce]);
 
   async function handleSelectWallet(adapter: WalletAdapter) {
     setShowWalletModal(false);
@@ -70,6 +86,9 @@ export default function App() {
         {announcement}
       </div>
 
+      <OfflineBanner visible={!isOnline} />
+
+      {/* Header */}
       {/* Header — NetworkBadge is persistent in shell so users always see Testnet/Mainnet */}
       <div style={{ marginBottom: 32, textAlign: "center" }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: "#a78bfa" }}>⚡ FlowPay</h1>
@@ -193,6 +212,8 @@ export default function App() {
                   setTab("dashboard");
                   setRefresh((r) => r + 1);
                 }}
+                announce={announce}
+                isOffline={!isOnline}
                 isPaused={isPaused}
               />
             )}
@@ -202,6 +223,7 @@ export default function App() {
                 onSign={signAndSubmit}
                 refreshTrigger={refresh}
                 announce={announce}
+                isOffline={!isOnline}
                 isPaused={isPaused}
               />
             )}

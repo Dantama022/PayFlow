@@ -23,6 +23,8 @@ interface Props {
   onSuccess: () => void;
   announce?: (message: string) => void;
   isPaused?: boolean;
+  /** When true, wallet mutations are disabled because the browser is offline. */
+  isOffline?: boolean;
 }
 
 type TouchedFields = {
@@ -70,6 +72,7 @@ export default function SubscribeForm({
   onSuccess,
   announce,
   isPaused = false,
+  isOffline = false,
 }: Props) {
   const [merchant, setMerchant] = useState("");
   const [amount, setAmount] = useState("");
@@ -91,6 +94,7 @@ export default function SubscribeForm({
   const { toasts, addToast, removeToast } = useToast();
 
   const fields: FormFields = { merchant, amount, interval };
+  const canSubmit = fieldsAreValid(fields) && !pending && !validating && !isPaused && !isOffline;
   const referrerValidation = validateReferrer(referrer, userKey);
   const canSubmit =
     fieldsAreValid(fields, referrerValidation.valid) &&
@@ -350,7 +354,14 @@ export default function SubscribeForm({
         disabled={!canSubmit}
         className="btn-primary subscribe-form__submit"
         aria-busy={pending || validating}
-        aria-label={isPaused ? "Subscribe (unavailable during maintenance)" : undefined}
+        aria-label={
+          isOffline
+            ? "Subscribe (unavailable while offline)"
+            : isPaused
+              ? "Subscribe (unavailable during maintenance)"
+              : undefined
+        }
+        title={isOffline ? "You're offline — wallet actions are unavailable" : undefined}
       >
         {pending ? "Confirming…" : validating ? "Validating…" : "Subscribe"}
       </button>

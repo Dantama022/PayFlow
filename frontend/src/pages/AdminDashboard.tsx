@@ -1,5 +1,6 @@
 import React from "react";
 import SubscriptionRepairPanel from "../components/admin/SubscriptionRepairPanel";
+import ProtocolStatsPanel from "../components/admin/ProtocolStatsPanel";
 import BatchPausePanel from "../components/admin/BatchPausePanel";
 import BatchWhitelistPanel from "../components/admin/BatchWhitelistPanel";
 import { useAdmin } from "../hooks/useAdmin";
@@ -36,6 +37,10 @@ export default function AdminDashboard({ publicKey, onSign }: Props) {
             : "Diagnostic tools are available in read-only mode. Repair actions require the contract admin wallet."}
         </p>
       )}
+
+      <div className="card admin-dashboard__section mb-4">
+        <ProtocolStatsPanel callerKey={publicKey} />
+      </div>
 
       <div className="card admin-dashboard__section mb-4">
         <SubscriptionRepairPanel adminKey={publicKey} onSign={onSign} />
