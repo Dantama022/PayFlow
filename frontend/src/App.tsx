@@ -22,6 +22,8 @@ export default function App() {
   const { publicKey, connect, disconnect, signAndSubmit, error, connecting, activeAdapter } =
     useWallet();
   const { announcement, announce } = useAccessibility();
+  const { networkMatch, walletNetwork } = useNetworkCheck();
+  const { isAdmin } = useAdmin(publicKey);
   const { networkMatch, walletNetwork, isMainnet, requiresMainnetConfirm, confirmMainnet } =
     useNetworkCheck();
   const { isAdmin } = useAdmin(publicKey);
