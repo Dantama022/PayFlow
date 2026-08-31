@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 import { useWallet, AVAILABLE_WALLETS } from "./hooks/useWallet";
 import { useAccessibility } from "./hooks/useAccessibility";
+import { useRpcHealthContext } from "./context/RpcHealthContext";
+import SubscribeForm from "./components/SubscribeForm";
+import Dashboard from "./components/Dashboard";
+import RpcSettings from "./components/RpcSettings";
 import { useNetworkCheck } from "./hooks/useNetworkCheck";
 import { useAdmin } from "./hooks/useAdmin";
 import { useContractPaused } from "./hooks/useContractPaused";
@@ -12,6 +16,7 @@ import WalletSelectModal from "./components/WalletSelectModal";
 import WalletBar from "./components/WalletBar";
 import TabBar from "./components/TabBar";
 import ContractPauseBanner from "./components/ContractPauseBanner";
+import NetworkBadge from "./components/NetworkBadge";
 import AdminDashboard from "./pages/AdminDashboard";
 import ContractPauseBanner from "./components/ContractPauseBanner";
 import type { WalletAdapter } from "./services/wallets/WalletAdapter";
@@ -22,7 +27,16 @@ export default function App() {
   const { publicKey, connect, disconnect, signAndSubmit, error, connecting, activeAdapter } =
     useWallet();
   const { announcement, announce } = useAccessibility();
+  const { healthy, circuitOpen } = useRpcHealthContext();
+  const [tab, setTab] = useState<"subscribe" | "dashboard">("dashboard");
+  const [refresh, setRefresh] = useState(0);
+  const [showRpcSettings, setShowRpcSettings] = useState(false);
+
+  const isRpcFailing = !healthy || circuitOpen;
   const { networkMatch, walletNetwork } = useNetworkCheck();
+  const { isAdmin } = useAdmin(publicKey);
+  const { networkMatch, walletNetwork, isMainnet, requiresMainnetConfirm, confirmMainnet } =
+    useNetworkCheck();
   const { isAdmin } = useAdmin(publicKey);
   const { isPaused } = useContractPaused();
   // Dashboard/SubscribeForm/MerchantDashboard/admin panels each keep their own
@@ -56,16 +70,70 @@ export default function App() {
         {announcement}
       </div>
 
-      {/* Header */}
+      {/* Header — NetworkBadge is persistent in shell so users always see Testnet/Mainnet */}
       <div style={{ marginBottom: 32, textAlign: "center" }}>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: "#a78bfa" }}>⚡ FlowPay</h1>
         <p style={{ color: "#64748b", marginTop: 6, fontSize: 14 }}>
           Decentralized recurring payments on Stellar
         </p>
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+          <NetworkBadge />
+        </div>
       </div>
 
       {/* Contract pause banner — shown at root level so it's always visible */}
       <ContractPauseBanner paused={isPaused} />
+      {/* RPC Failure Banner */}
+      {isRpcFailing && (
+        <div
+          role="alert"
+          data-testid="rpc-failure-banner"
+          className="card"
+          style={{
+            background: "var(--color-danger-bg, #451a1a)",
+            color: "var(--color-danger-text, #f87171)",
+            border: "1px solid var(--color-danger, #ef4444)",
+            marginBottom: "20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "12px",
+            padding: "12px 16px",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>
+            ⚠️ RPC endpoint is unreachable. Try a different endpoint.
+          </span>
+          <button
+            className="btn-secondary"
+            onClick={() => setShowRpcSettings(true)}
+            data-testid="rpc-failure-banner-change-btn"
+            aria-label="Try a different RPC endpoint"
+            style={{ fontSize: 12, padding: "4px 8px", whiteSpace: "nowrap" }}
+          >
+            Try a different endpoint
+      {/* Mainnet safety gate — require explicit confirmation once per session when passphrase is mainnet */}
+      {isMainnet && requiresMainnetConfirm && (
+        <div
+          className="card"
+          style={{ background: "#3b1f1f", borderColor: "#7f1d1d", marginBottom: 16 }}
+        >
+          <p style={{ color: "#fbbf24", fontSize: 13, fontWeight: 600 }}>
+            ⚠ Mainnet mode — real funds at risk. Please confirm you intend to use Mainnet before
+            continuing.
+          </p>
+          <button
+            onClick={confirmMainnet}
+            className="btn-primary"
+            style={{ marginTop: 12 }}
+            data-testid="confirm-mainnet-btn"
+          >
+            I understand, continue on Mainnet
+          </button>
+        </div>
+      )}
+
+      {showRpcSettings && <RpcSettings onClose={() => setShowRpcSettings(false)} />}
 
       {/* Network mismatch warning — preserves passphrase/network check from useNetworkCheck */}
       {publicKey && !networkMatch && (
