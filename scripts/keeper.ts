@@ -57,6 +57,7 @@ import { MultiEndpointServer } from "./rpc-client.js";
 import { buildOptimizedBatches } from "./batch-optimizer.js";
 import {
   startMetricsServer,
+  stopMetricsServer,
   recordBatchCharge,
   recordChargeResults,
   incrementCycles,
@@ -75,6 +76,12 @@ import {
 import { logger as rootLogger } from "./logger.js";
 import { log } from "./utils/log.js";
 import {
+  ConfigSchema,
+  formatConfigErrors,
+  logDeprecationWarnings,
+  normalizeEnv,
+} from "./config.js";
+import {
   addPageTally,
   tallyChargeResults,
   type CandidateRecord,
@@ -89,7 +96,7 @@ const NETWORK_PASSPHRASE = (process.env.NETWORK_PASSPHRASE ??
 const DRY_RUN =
   process.env.DRY_RUN === "true" || process.argv.slice(2).includes("--dry-run");
 const KEEPER_PUBLIC_KEY = process.env.KEEPER_PUBLIC_KEY || "";
-const KEEPER_SECRET = process.env.KEEPER_SECRET || "";
+const KEEPER_SECRET = process.env.SECRET_KEY || process.env.KEEPER_SECRET || "";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -146,16 +153,31 @@ const logger = rootLogger.child({
 // ── Validation ───────────────────────────────────────────────────────────────
 
 function validateEnv(): void {
-  const errors: string[] = [];
-  if (!CONTRACT_ID) errors.push("CONTRACT_ID is required");
-  if (!KEEPER_PUBLIC_KEY) errors.push("KEEPER_PUBLIC_KEY is required");
-  if (!DRY_RUN && !KEEPER_SECRET)
-    errors.push("KEEPER_SECRET is required in live mode (or set DRY_RUN=true)");
+  const normalizedEnv = normalizeEnv(process.env);
+  const schema = DRY_RUN
+    ? ConfigSchema.extend({
+        SECRET_KEY: ConfigSchema.shape.SECRET_KEY.optional(),
+      })
+    : ConfigSchema;
+  const result = schema.safeParse({
+    ...normalizedEnv,
+    RPC_URL: normalizedEnv.RPC_URL || RPC_URL,
+    BATCH_SIZE: normalizedEnv.BATCH_SIZE || String(DEFAULT_BATCH_SIZE),
+    INTERVAL_SECONDS: normalizedEnv.INTERVAL_SECONDS || "3600",
+  });
+  logDeprecationWarnings();
+
+  const errors = result.success
+    ? []
+    : formatConfigErrors(result.error).map((error) =>
+        error.replace(/^✗ SECRET_KEY:/, "✗ SECRET_KEY (or KEEPER_SECRET):"),
+      );
+  if (!KEEPER_PUBLIC_KEY) {
+    errors.push("✗ KEEPER_PUBLIC_KEY: KEEPER_PUBLIC_KEY is required");
+  }
 
   if (errors.length > 0) {
-    // console.error is intentional here — logger may not be initialised yet at
-    // bootstrap, and this is a fatal configuration error.
-    console.error("Error: Missing required environment variables:");
+    console.error("Error: Invalid keeper configuration:");
     for (const err of errors) console.error(`  - ${err}`);
     console.error(
       "\nUsage: CONTRACT_ID=... KEEPER_PUBLIC_KEY=... tsx keeper.ts [--once]",
@@ -1219,8 +1241,21 @@ async function main(): Promise<void> {
     process.exit(report.errors.length > 0 && report.totalCharged === 0 ? 1 : 0);
   }
 
+  let shutdown = false;
+  let sleepTimer: NodeJS.Timeout | undefined;
+  let resolveSleep: (() => void) | undefined;
+  const handleSignal = (signal: NodeJS.Signals): void => {
+    if (shutdown) return;
+    shutdown = true;
+    logger.info("Shutdown signal received. Finishing current cycle then exiting.", { signal });
+    if (sleepTimer) clearTimeout(sleepTimer);
+    resolveSleep?.();
+  };
+  process.on("SIGINT", handleSignal);
+  process.on("SIGTERM", handleSignal);
+
   // Loop mode
-  while (true) {
+  while (!shutdown) {
     const report = await runCycle();
     incrementCycles();
     const nextRun = new Date(Date.now() + INTERVAL_SECONDS * 1000);
@@ -1238,13 +1273,26 @@ async function main(): Promise<void> {
       logger.warn("All pages errored — will retry next cycle", { mode: DRY_RUN ? "dry-run" : "live" });
     }
 
-    await new Promise((r) => setTimeout(r, INTERVAL_SECONDS * 1000));
+    if (!shutdown) {
+      await new Promise<void>((resolve) => {
+        resolveSleep = resolve;
+        sleepTimer = setTimeout(resolve, INTERVAL_SECONDS * 1000);
+      });
+      sleepTimer = undefined;
+      resolveSleep = undefined;
+    }
   }
+
+  await stopMetricsServer();
+  logger.info("Keeper stopped");
 }
 
-main().catch((error) => {
-  console.error(
-    `Fatal error: ${error instanceof Error ? error.message : error}`,
-  );
-  process.exit(1);
-});
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((error) => {
+    console.error(
+      `Fatal error: ${error instanceof Error ? error.message : error}`,
+    );
+    process.exit(1);
+  });
+}
