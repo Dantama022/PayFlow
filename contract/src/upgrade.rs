@@ -49,9 +49,3 @@ pub fn commit_upgrade(env: &Env) {
 pub fn get_pending_upgrade(env: &Env) -> Option<BytesN<32>> {
     env.storage().temporary().get(&DataKey::PendingUpgrade)
 }
-
-#[cfg(test)]
-pub fn upgrade(env: &Env, new_wasm_hash: BytesN<32>) {
-    // Keep direct upgrade available for the test environment
-    events::publish_upgraded(env, &new_wasm_hash);
-}
