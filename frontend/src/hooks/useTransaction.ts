@@ -25,7 +25,7 @@
  *   }
  * };
  */
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { server } from "../stellar";
 import { useRpcHealthContext } from "../context/RpcHealthContext";
 import {
@@ -56,6 +56,23 @@ export function useTransaction(): UseTransactionResult {
   const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { circuitOpen } = useRpcHealthContext();
+
+  // Clean up any pending timer on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   const submit = useCallback(
     async (buildAndSign: () => Promise<string>, label = "Transaction"): Promise<string> => {
@@ -111,6 +128,9 @@ export function useTransaction(): UseTransactionResult {
       // Poll until confirmed or timed out
       const deadline = Date.now() + POLL_TIMEOUT_MS;
 
+      // Clear any existing timer before starting a new poll cycle
+      clearTimer();
+
       await new Promise<void>((resolve) => {
         function poll() {
           if (Date.now() > deadline) {
@@ -118,6 +138,7 @@ export function useTransaction(): UseTransactionResult {
             markFailed(uiId, timeoutMsg);
             setError(timeoutMsg);
             setStatus("failed");
+            clearTimer();
             resolve();
             return;
           }
@@ -128,12 +149,14 @@ export function useTransaction(): UseTransactionResult {
               if (result.status === "SUCCESS") {
                 markConfirmed(uiId);
                 setStatus("success");
+                clearTimer();
                 resolve();
               } else if (result.status === "FAILED") {
                 const failMsg = "Transaction failed on-chain";
                 markFailed(uiId, failMsg);
                 setError(failMsg);
                 setStatus("failed");
+                clearTimer();
                 resolve();
               } else {
                 // NOT_FOUND or still pending — keep polling
@@ -151,7 +174,7 @@ export function useTransaction(): UseTransactionResult {
 
       return txHash;
     },
-    [circuitOpen]
+    [circuitOpen, clearTimer]
   );
 
   return { status, hash, error, submit };
