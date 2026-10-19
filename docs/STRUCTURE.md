@@ -83,7 +83,7 @@ contract/src/
 ├── subscription_metadata.rs
 ├── token.rs                  # Note on token/vesting (vesting extracted to vesting/)
 ├── trial.rs
-├── upgrade.rs               # propose_upgrade / commit_upgrade (test-only upgrade())
+├── upgrade.rs               # propose_upgrade / commit_upgrade / cancel_pending_upgrade
 ├── validation.rs
 ├── whitelist.rs
 ├── test.rs                  # Unit tests

@@ -4624,28 +4624,6 @@ fn test_batch_pause_already_paused_keeps_existing_expiry() {
     assert_eq!(count_user_events(&env, "subscription_paused", &user), 0);
 }
 
-#[test]
-fn test_upgrade_event_emitted() {
-    let (env, contract_id, token_addr, _user, _merchant) = setup();
-    let client = FlowPayClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&token_addr, &admin);
-
-    let new_wasm_hash = BytesN::from_array(&env, &[7; 32]);
-    client.upgrade(&new_wasm_hash);
-
-    let env = Env::default();
-    let contract_id = env.register_contract(None, FlowPay);
-    let mock_wasm_hash = BytesN::from_array(&env, &[0u8; 32]);
-    env.as_contract(&contract_id, || {
-        events::publish_upgraded(&env, &mock_wasm_hash);
-    });
-    let events = env.events().all();
-    let (_, topics, _) = events.get(events.len() - 1).unwrap();
-    let topic_symbol: Symbol = topics.get(0).unwrap().try_into_val(&env).unwrap();
-    assert_eq!(topic_symbol, Symbol::new(&env, "upgrade"));
-}
-
 // ─────────────────────────────────────────────────────────────
 // Issue #1025: upgrade event must carry the new WASM hash
 // ─────────────────────────────────────────────────────────────

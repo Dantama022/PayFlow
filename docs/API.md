@@ -768,28 +768,6 @@ CLI example:
 soroban contract invoke --id <CONTRACT_ID> --network testnet -- get_token
 ```
 
-### `upgrade`
-
-```
-upgrade(env: Env, new_wasm_hash: BytesN<32>)
-```
-
-| Name            | Type         | Description             |
-| --------------- | ------------ | ----------------------- |
-| `new_wasm_hash` | `BytesN<32>` | New contract WASM hash. |
-
-Auth: none in the current implementation.
-
-Returns: `()`.
-
-Errors: none beyond host/deployer failures.
-
-CLI example:
-
-```bash
-soroban contract invoke --id <CONTRACT_ID> --network testnet -- upgrade --new_wasm_hash <WASM_HASH>
-```
-
 ### `propose_upgrade`
 
 ```

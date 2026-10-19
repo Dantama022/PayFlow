@@ -2410,15 +2410,6 @@ impl FlowPay {
     }
 }
 
-#[contractimpl]
-#[cfg(test)]
-impl FlowPay {
-    /// Upgrades the current contract WASM to `new_wasm_hash` (test only).
-    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        upgrade::upgrade(&env, new_wasm_hash);
-    }
-}
-
 /// Refreshes the contract instance's TTL. Instance storage holds shared
 /// protocol state (Admin, Token, FeeCollector, FeeBps, GracePeriod,
 /// WhitelistEnabled, SchemaVersion, ActiveCount, ...) which all share one
