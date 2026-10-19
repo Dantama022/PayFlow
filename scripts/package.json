@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Operational and analytics scripts for FlowPay",
   "scripts": {
-    "test": "NODE_OPTIONS='--experimental-sqlite' vitest run",
-    "test:merchant": "NODE_OPTIONS='--experimental-sqlite' tsx --test __tests__/merchant-queries.test.ts __tests__/merchant-analytics.test.ts",
+    "test": "vitest run",
+    "test:merchant": "vitest run __tests__/merchant-queries.test.ts __tests__/merchant-analytics.test.ts",
     "test:event-dedup": "tsx test-event-dedup-integration.ts",
     "test:renewal-forecast": "tsx test-renewal-forecast.ts",
     "test:rpc-failover": "tsx test-rpc-failover.ts",
