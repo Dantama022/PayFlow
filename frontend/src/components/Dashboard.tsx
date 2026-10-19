@@ -209,6 +209,20 @@ export default function Dashboard({
               onSign={onSign}
               onRestored={refresh}
             />
+          ) : error ? (
+            <div
+              className="card mb-3"
+              role="alert"
+              data-testid="subscription-error"
+              style={{ borderColor: "var(--color-danger)" }}
+            >
+              <p className="text-sm text-error mb-2">
+                Couldn&apos;t load your subscription: {friendlyError(error)}
+              </p>
+              <button type="button" className="btn-secondary" onClick={() => void refresh()}>
+                Retry
+              </button>
+            </div>
           ) : (
             <div className="card">
               <p className="no-sub-text">No active subscription found.</p>

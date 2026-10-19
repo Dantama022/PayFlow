@@ -19,8 +19,14 @@ export default function BalanceDisplay({ address, tokenId }: BalanceDisplayProps
     return (
       <div className="flex flex-col">
         <span className="wallet-bar__label">Balance</span>
-        <span className="wallet-bar__address text-mono" title={error} data-testid="balance-error">
-          —
+        <span
+          className="wallet-bar__address text-mono text-error"
+          title={error}
+          aria-label={`Balance unavailable: ${error}`}
+          data-testid="balance-error"
+          role="alert"
+        >
+          Unavailable
         </span>
       </div>
     );

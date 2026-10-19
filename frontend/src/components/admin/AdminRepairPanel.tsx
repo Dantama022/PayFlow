@@ -10,6 +10,7 @@
  *  - Execute repair_subscription transactions (admin-only)
  *  - Show before/after state comparison
  */
+import { useCallback, useRef, useState } from "react";
 import { StrKey } from "@stellar/stellar-sdk";
 import {
   buildRepairSubscriptionTx,
@@ -139,7 +140,7 @@ export default function AdminRepairPanel({ adminKey, onSign, gatePassed = true }
         addToast("Repair transaction confirmed.", "success", hash);
       }
 
-      setSubscriptionRefresh((n) => n + 1);
+      setSubscriptionRefresh((n: number) => n + 1);
       await runValidation();
       await refreshSubscription();
     } catch (e: unknown) {
@@ -194,11 +195,14 @@ export default function AdminRepairPanel({ adminKey, onSign, gatePassed = true }
 
       <div className="form-group mb-4">
         <AddressInput label="Subscriber address" value={userAddress} onChange={setUserAddress} />
+        {/* Re-running while a request is in flight is intentionally allowed:
+            `latestValidationSeqRef` discards the stale response. Native
+            `disabled` would make that race guard unreachable from the UI. */}
         <button
           type="button"
           className="btn-primary mt-3"
           onClick={runValidation}
-          disabled={!addressValid || validationPhase === "loading"}
+          disabled={!addressValid}
           aria-busy={validationPhase === "loading"}
           aria-disabled={!addressValid || validationPhase === "loading"}
         >

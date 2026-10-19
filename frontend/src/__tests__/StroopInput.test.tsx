@@ -84,7 +84,7 @@ describe("StroopInput accessibility", () => {
     const onChange1 = vi.fn();
     const onChange2 = vi.fn();
     
-    const { container } = render(
+    render(
       <>
         <StroopInput label="Amount 1" onChange={onChange1} id="input-1" testId="input-1" />
         <StroopInput label="Amount 2" onChange={onChange2} id="input-2" testId="input-2" />

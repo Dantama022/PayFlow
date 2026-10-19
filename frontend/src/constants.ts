@@ -55,13 +55,11 @@ export const CONTRACT_LIMITS = {
   /** Max `amount` accepted by `subscribe()` — contract/src/lib.rs. */
   MAX_SUBSCRIPTION_AMOUNT: 100_000_000_000_000n,
   /** Min `interval` (seconds) accepted by `subscribe()` — one day. */
-  MIN_INTERVAL_SECONDS: 86400,
+  MIN_INTERVAL_SECONDS: SECONDS_PER_DAY,
   /**
    * Max addresses per `batch_pause_subscriptions` / `batch_cancel` call.
    * Mirrors `caps::MAX_BATCH_PAUSE_SUBSCRIPTIONS` in contract/src/caps.rs.
    */
-  MIN_INTERVAL_SECONDS: SECONDS_PER_DAY,
-  /** Max addresses per batch_pause_subscriptions call */
   MAX_BATCH_PAUSE: 25,
   /**
    * Max addresses per `whitelist_batch_add` / `whitelist_batch_remove` call.

@@ -122,6 +122,7 @@ export const CONTRACT_ERRORS: Record<string, string> = {
   "already initialized": "Contract is already set up.",
   "amount must be positive": "Amount must be greater than zero.",
   "interval must be positive": "Billing interval must be greater than zero.",
+  intervalexceedsmaximum: "Billing interval must not exceed 400 years.",
   "contract paused": "Payments are temporarily paused by the contract administrator.",
   "contractpaused": "Payments are temporarily paused by the contract administrator.",
   // Pre-`initialize` admin reads now abort with the typed

@@ -33,7 +33,7 @@ vi.mock("../hooks/useTransaction", () => ({
 
 import * as stellar from "../stellar";
 import { useAdmin } from "../hooks/useAdmin";
-import SubscriptionRepairPanel from "../components/admin/SubscriptionRepairPanel";
+import AdminRepairPanel from "../components/admin/AdminRepairPanel";
 
 // Checksum-valid Stellar Ed25519 public key for test use
 const VALID_USER = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -68,7 +68,7 @@ beforeEach(() => {
 describe("AdminRepairPanel — loading state", () => {
   it("shows the AdminRepairSkeleton (aria-busy) while admin credentials are loading", () => {
     adminLoading();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     // AdminRepairSkeleton sets aria-busy="true" and aria-label="Loading repair panel"
     expect(screen.getByLabelText(/loading repair panel/i)).toBeInTheDocument();
@@ -76,7 +76,7 @@ describe("AdminRepairPanel — loading state", () => {
 
   it("hides the skeleton once admin check completes", () => {
     adminReady();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     expect(screen.queryByLabelText(/loading repair panel/i)).not.toBeInTheDocument();
   });
@@ -87,7 +87,7 @@ describe("AdminRepairPanel — loading state", () => {
     vi.mocked(stellar.validateSubscription).mockImplementation(() => new Promise(() => {}));
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await user.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -102,7 +102,7 @@ describe("AdminRepairPanel — loading state", () => {
 
 describe("AdminRepairPanel — empty (idle) state", () => {
   it("shows the idle empty-state hint before any validation is run", () => {
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     expect(screen.getByTestId("repair-empty-state")).toBeInTheDocument();
     expect(screen.getByTestId("repair-empty-state")).toHaveTextContent(
@@ -111,7 +111,7 @@ describe("AdminRepairPanel — empty (idle) state", () => {
   });
 
   it("idle hint is distinct from loading (no aria-busy)", () => {
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     const emptyEl = screen.getByTestId("repair-empty-state");
     expect(emptyEl).not.toHaveAttribute("aria-busy");
@@ -127,7 +127,7 @@ describe("AdminRepairPanel — empty (idle) state", () => {
     });
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await user.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -149,7 +149,7 @@ describe("AdminRepairPanel — error state", () => {
     );
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await user.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -167,7 +167,7 @@ describe("AdminRepairPanel — error state", () => {
     vi.mocked(stellar.validateSubscription).mockRejectedValue(new Error("timeout"));
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await user.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -193,7 +193,7 @@ describe("AdminRepairPanel — error state", () => {
       });
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await user.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await user.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -240,16 +240,17 @@ describe("AdminRepairPanel — race / stale-response prevention", () => {
     });
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     const addressInput = screen.getByPlaceholderText("G…");
 
     // Trigger first (slow) validation
     await user.type(addressInput, VALID_USER);
-    await user.click(screen.getByRole("button", { name: /validate subscription/i }));
+    const validateButton = screen.getByRole("button", { name: /validate subscription/i });
+    await user.click(validateButton);
 
     // Immediately trigger second (fast) validation while first is still in-flight
-    await user.click(screen.getByRole("button", { name: /validate subscription/i }));
+    await user.click(validateButton);
 
     // Second call resolves quickly → success report shown
     await waitFor(() =>
@@ -295,14 +296,15 @@ describe("AdminRepairPanel — race / stale-response prevention", () => {
     });
 
     const user = userEvent.setup();
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     const addressInput = screen.getByPlaceholderText("G…");
 
     // Start slow (will error), then immediately start fast (will succeed)
     await user.type(addressInput, VALID_USER);
-    await user.click(screen.getByRole("button", { name: /validate subscription/i }));
-    await user.click(screen.getByRole("button", { name: /validate subscription/i }));
+    const validateButton = screen.getByRole("button", { name: /validate subscription/i });
+    await user.click(validateButton);
+    await user.click(validateButton);
 
     // Fast call completes — success state shown
     await waitFor(() =>

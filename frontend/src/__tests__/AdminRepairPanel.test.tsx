@@ -25,7 +25,7 @@ vi.mock("../hooks/useTransaction", () => ({
 import * as stellar from "../stellar";
 import { useAdmin } from "../hooks/useAdmin";
 import { useTransaction } from "../hooks/useTransaction";
-import SubscriptionRepairPanel from "../components/admin/SubscriptionRepairPanel";
+import AdminRepairPanel from "../components/admin/AdminRepairPanel";
 
 const VALID_USER = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 
@@ -45,7 +45,7 @@ describe("AdminRepairPanel", () => {
   it("shows loading state while validating", async () => {
     vi.mocked(stellar.validateSubscription).mockImplementation(() => new Promise(() => {}));
 
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     const input = screen.getByPlaceholderText("G…");
     await userEvent.type(input, VALID_USER);
@@ -63,7 +63,7 @@ describe("AdminRepairPanel", () => {
       corruptedReferences: [],
     });
 
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await userEvent.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await userEvent.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -85,7 +85,7 @@ describe("AdminRepairPanel", () => {
       corruptedReferences: [],
     });
 
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await userEvent.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await userEvent.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -112,7 +112,7 @@ describe("AdminRepairPanel", () => {
       corruptedReferences: [],
     });
 
-    render(<SubscriptionRepairPanel adminKey="GUSER456" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GUSER456" onSign={vi.fn()} />);
 
     await userEvent.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await userEvent.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -152,7 +152,7 @@ describe("AdminRepairPanel", () => {
     vi.mocked(stellar.buildRepairSubscriptionTx).mockResolvedValue("signed-xdr");
     vi.mocked(stellar.parseSubscriptionRepairedEvent).mockResolvedValue(3);
 
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={onSign} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={onSign} />);
 
     await userEvent.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await userEvent.click(screen.getByRole("button", { name: /validate subscription/i }));
@@ -178,7 +178,7 @@ describe("AdminRepairPanel", () => {
       new Error("HostError: Contract unavailable")
     );
 
-    render(<SubscriptionRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
+    render(<AdminRepairPanel adminKey="GADMIN123" onSign={vi.fn()} />);
 
     await userEvent.type(screen.getByPlaceholderText("G…"), VALID_USER);
     await userEvent.click(screen.getByRole("button", { name: /validate subscription/i }));

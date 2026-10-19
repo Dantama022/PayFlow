@@ -19,7 +19,6 @@ import { buildExtendSubscriptionTtlTx, estimateExtendTtlFee, isArchivedError } f
 import { useTransaction } from "../hooks/useTransaction";
 import { useToast } from "../hooks/useToast";
 import { friendlyError } from "../utils/errors";
-import { STROOPS_PER_XLM } from "../constants";
 import { stroopsToXlm } from "../utils/format";
 import Spinner from "./Spinner";
 import ConfirmModal from "./ConfirmModal";

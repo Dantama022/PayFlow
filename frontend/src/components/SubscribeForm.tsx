@@ -16,6 +16,7 @@ import AddressBook from "./AddressBook";
 import ReferralPanel from "./ReferralPanel";
 import ToastContainer from "./Toast";
 import { useToast } from "../hooks/useToast";
+import { friendlyError } from "../utils/errors";
 import { useDirtyPreroute } from "../hooks/useDirtyPreroute";
 import StroopInput from "./StroopInput";
 
@@ -189,7 +190,7 @@ export default function SubscribeForm({
       announce?.("Transaction confirmed");
       onSuccess();
     } catch (err: unknown) {
-      const msg = `Error: ${err instanceof Error ? err.message : String(err)}`;
+      const msg = `Error: ${friendlyError(err instanceof Error ? err.message : String(err))}`;
       setStatus(msg);
       addToast(msg, "error");
       announce?.(msg);

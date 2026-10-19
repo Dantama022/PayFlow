@@ -33,7 +33,7 @@ vi.mock("../context/RpcHealthContext", () => ({
 
 import * as stellar from "../stellar";
 import { useTransaction } from "../hooks/useTransaction";
-import SubscriptionRepairPanel from "../components/SubscriptionRepairPanel";
+import SubscriberRecoveryPanel from "../components/SubscriberRecoveryPanel";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -45,10 +45,10 @@ const MOCK_ON_SIGN = vi.fn().mockResolvedValue("mock-tx-hash");
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function renderPanel(
-  overrides: Partial<React.ComponentProps<typeof SubscriptionRepairPanel>> = {}
+  overrides: Partial<React.ComponentProps<typeof SubscriberRecoveryPanel>> = {}
 ) {
   return render(
-    <SubscriptionRepairPanel
+    <SubscriberRecoveryPanel
       userKey={USER_KEY}
       isArchived={true}
       onSign={MOCK_ON_SIGN}
@@ -116,7 +116,7 @@ describe("SubscriberRecoveryPanel (TTL / archived state)", () => {
     vi.mocked(stellar.estimateExtendTtlFee).mockResolvedValue(5_000_000n);
     renderPanel();
     await waitFor(() => {
-      expect(screen.getByText(/≈ 0\.5 XLM/i)).toBeInTheDocument();
+      expect(screen.getByText(/≈ 0\.5000000 XLM/i)).toBeInTheDocument();
     });
   });
 
