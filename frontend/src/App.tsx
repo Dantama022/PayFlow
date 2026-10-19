@@ -233,43 +233,73 @@ export default function App() {
 
           {/* Content */}
           <div className="card" style={{ marginTop: 20 }}>
-            {tab === "subscribe" && (
-              <SubscribeForm
-                userKey={publicKey}
-                onSign={signAndSubmit}
-                onSuccess={() => {
-                  setTab("dashboard");
-                  setRefresh((r) => r + 1);
-                }}
-                isPaused={!gatePassed}
-                announce={announce}
-                isOffline={!isOnline}
-              />
-            )}
-            {tab === "dashboard" && (
-              <Dashboard
-                userKey={publicKey}
-                onSign={signAndSubmit}
-                refreshTrigger={refresh}
-                announce={announce}
-                isPaused={!gatePassed}
-                isOffline={!isOnline}
-              />
-            )}
-            {tab === "merchant" && (
-              <MerchantDashboard
-                merchantKey={publicKey}
-                onSign={signAndSubmit}
-                refreshTrigger={refresh}
-                isPaused={isPaused}
-              />
-            )}
-            {tab === "admin" && isAdmin && (
-              <AdminDashboard
-                publicKey={publicKey}
-                onSign={signAndSubmit}
-                gatePassed={gatePassed}
-              />
+            <div
+              role="tabpanel"
+              id="panel-subscribe"
+              aria-labelledby="tab-subscribe"
+              hidden={tab !== "subscribe"}
+            >
+              {tab === "subscribe" && (
+                <SubscribeForm
+                  userKey={publicKey}
+                  onSign={signAndSubmit}
+                  onSuccess={() => {
+                    setTab("dashboard");
+                    setRefresh((r) => r + 1);
+                  }}
+                  isPaused={!gatePassed}
+                  announce={announce}
+                  isOffline={!isOnline}
+                />
+              )}
+            </div>
+            <div
+              role="tabpanel"
+              id="panel-dashboard"
+              aria-labelledby="tab-dashboard"
+              hidden={tab !== "dashboard"}
+            >
+              {tab === "dashboard" && (
+                <Dashboard
+                  userKey={publicKey}
+                  onSign={signAndSubmit}
+                  refreshTrigger={refresh}
+                  announce={announce}
+                  isPaused={!gatePassed}
+                  isOffline={!isOnline}
+                />
+              )}
+            </div>
+            <div
+              role="tabpanel"
+              id="panel-merchant"
+              aria-labelledby="tab-merchant"
+              hidden={tab !== "merchant"}
+            >
+              {tab === "merchant" && (
+                <MerchantDashboard
+                  merchantKey={publicKey}
+                  onSign={signAndSubmit}
+                  refreshTrigger={refresh}
+                  isPaused={isPaused}
+                />
+              )}
+            </div>
+            {isAdmin && (
+              <div
+                role="tabpanel"
+                id="panel-admin"
+                aria-labelledby="tab-admin"
+                hidden={tab !== "admin"}
+              >
+                {tab === "admin" && (
+                  <AdminDashboard
+                    publicKey={publicKey}
+                    onSign={signAndSubmit}
+                    gatePassed={gatePassed}
+                  />
+                )}
+              </div>
             )}
           </div>
         </>
